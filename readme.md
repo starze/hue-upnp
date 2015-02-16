@@ -1,6 +1,7 @@
 Edit the properties in the beginning of the python-server and start with python hueUpnp.py
 
-Notes from falk0069
+Notes from falk0069:
+
 I don't own a Phillips hue but I wanted an emulator so I could test it against my Harmony remote which supports them.  I found a number of emulators but none of them worked with the Harmony remote.  Sagen's python code was easiest to modify and do what I needed.  I've never coded in python before so this was a good experience.
 
 Some pitfalls to mention:
