@@ -1,14 +1,43 @@
-import socket, time, SocketServer
+import socket, struct, time, SocketServer, re, subprocess, sys, logging, logging.handlers
 from threading import Thread
 
 #config
 BCAST_IP = "239.255.255.250"
 UPNP_PORT = 1900
-BROADCAST_INTERVAL = 20 # Seconds between upnp broadcast
-IP = "192.168.1.16" # Bind to IP
-HTTP_PORT = 1901 # HTTP-port to serve icons and xml
+BROADCAST_INTERVAL = 200 # Seconds between upnp broadcast
+IP = "192.168.1.200" # Callback http webserver IP (this machine)
+HTTP_PORT = 8080 # HTTP-port to serve icons, xml, json (80 is most compatible but requires root)
+#external script to easily call other activities (e.g. wol, wemo-switch, etc)
+EXTERNALPROG = "./hue-upnp-helper.sh"
+
+#Setup Logging Output
+logFormatter = logging.Formatter("%(asctime)s [%(levelname)-5.5s] %(message)s")
+L = logging.getLogger()
+L.setLevel(logging.DEBUG) #set to INFO or ERROR for less logging
+consoleHandler = logging.StreamHandler(sys.stdout)
+consoleHandler.setFormatter(logFormatter)
+L.addHandler(consoleHandler)
+
+#GLOBAL HUE STATES
+HUE1NAME = "Hue Lamp 1"
+HUE1ON = "true"
+HUE1XY = "[0.0,0.0]"
+HUE1BRI = "254"
+HUE1CT = "201"
+HUE2NAME = "Hue Lamp 2"
+HUE2ON = "true"
+HUE2XY = "[0.0,0.0]"
+HUE2BRI = "254"
+HUE2CT = "201"
+HUE3NAME = "Hue Lamp 3"
+HUE3ON = "true"
+HUE3XY = "[0.0,0.0]"
+HUE3BRI = "254"
+HUE3CT = "201"
 
 M_SEARCH_REQ_MATCH = "M-SEARCH"
+
+L.info("Server starting")
 
 UPNP_BROADCAST = """NOTIFY * HTTP/1.1
 HOST: 239.255.255.250:1900
@@ -17,19 +46,21 @@ LOCATION: http://{}:{}/description.xml
 SERVER: FreeRTOS/6.0.5, UPnP/1.0, IpBridge/0.1
 NTS: ssdp:alive
 NT: upnp:rootdevice
-USN: uuid:2f402f80-da50-11e1-9b23-nydalenlys::upnp:rootdevice
+USN: uuid:2f402f80-da50-11e1-9b23-00178817122c::upnp:rootdevice
 
 """.format(IP, HTTP_PORT).replace("\n", "\r\n")
 
-UPNP_RESPOND = """HTTP/1.1 
+
+#IP, PORT, ST
+UPNP_RESPOND_TEMPLATE = """HTTP/1.1 200 OK
 CACHE-CONTROL: max-age=100
 EXT:
 LOCATION: http://{}:{}/description.xml
 SERVER: FreeRTOS/6.0.5, UPnP/1.0, IpBridge/0.1
-ST: upnp:rootdevice
-USN: uuid:2f402f80-da50-11e1-9b23-nydalenlys::upnp:rootdevice
+ST: {}
+USN: uuid:2f402f80-da50-11e1-9b23-00178817122c::upnp:rootdevice
 
-""".format(IP, HTTP_PORT).replace("\n", "\r\n")
+""".replace("\n", "\r\n")
 
 
 DESCRIPTION_XML = """HTTP/1.1 200 OK
@@ -38,51 +69,92 @@ Connection: Keep-Alive
 
 <?xml version="1.0"?>
 <root xmlns="urn:schemas-upnp-org:device-1-0">
-	<specVersion>
-		<major>1</major>
-		<minor>0</minor>
-	</specVersion>
-	<URLBase>http://{}:{}/</URLBase>
-	<device>
-		<deviceType>urn:schemas-upnp-org:device:Basic:1</deviceType>
-		<friendlyName>Philips hue Bridge Router</friendlyName>
-		<manufacturer>Sagen</manufacturer>
-		<manufacturerURL>http://github.com/sagen</manufacturerURL>
-		<modelDescription>Philips hue Personal Wireless Lighting Bridge Router</modelDescription>
-		<modelName>Philips hue bridge 2012 Router</modelName>
-		<modelNumber>929000226503</modelNumber>
-		<modelURL>http://www.meethue.com</modelURL>
-		<serialNumber>nope</serialNumber>
-		<UDN>uuid:2f402f80-da50-11e1-9b23-nydalenlys</UDN>
-		<serviceList>
-			<service>
-				<serviceType>(null)</serviceType>
-				<serviceId>(null)</serviceId>
-				<controlURL>(null)</controlURL>
-				<eventSubURL>(null)</eventSubURL>
-				<SCPDURL>(null)</SCPDURL>
-			</service>
-		</serviceList>
-		<presentationURL>index.html</presentationURL>
-		<iconList>
-			<icon>
-				<mimetype>image/png</mimetype>
-				<height>48</height>
-				<width>48</width>
-				<depth>24</depth>
-				<url>hue_logo_0.png</url>
-			</icon>
-			<icon>
-				<mimetype>image/png</mimetype>
-				<height>120</height>
-				<width>120</width>
-				<depth>24</depth>
-				<url>hue_logo_3.png</url>
-			</icon>
-		</iconList>
-	</device>
+        <specVersion>
+                <major>1</major>
+                <minor>0</minor>
+        </specVersion>
+        <URLBase>http://{}:{}/</URLBase>
+        <device>
+                <deviceType>urn:schemas-upnp-org:device:Basic:1</deviceType>
+                <friendlyName>Philips hue ({})</friendlyName>
+                <manufacturer>Royal Philips Electronics</manufacturer>
+                <manufacturerURL>http://www.philips.com</manufacturerURL>
+                <modelDescription>Philips hue Personal Wireless Lighting</modelDescription>
+                <modelName>Philips hue bridge 2012 Router</modelName>
+                <modelNumber>929000226503</modelNumber>
+                <modelURL>http://www.meethue.com</modelURL>
+                <serialNumber>00178817122c</serialNumber>
+                <UDN>uuid:2f402f80-da50-11e1-9b23-00178817122c</UDN>
+                <serviceList>
+                        <service>
+                                <serviceType>(null)</serviceType>
+                                <serviceId>(null)</serviceId>
+                                <controlURL>(null)</controlURL>
+                                <eventSubURL>(null)</eventSubURL>
+                                <SCPDURL>(null)</SCPDURL>
+                        </service>
+                </serviceList>
+                <presentationURL>index.html</presentationURL>
+                <iconList>
+                        <icon>
+                                <mimetype>image/png</mimetype>
+                                <height>48</height>
+                                <width>48</width>
+                                <depth>24</depth>
+                                <url>hue_logo_0.png</url>
+                        </icon>
+                        <icon>
+                                <mimetype>image/png</mimetype>
+                                <height>120</height>
+                                <width>120</width>
+                                <depth>24</depth>
+                                <url>hue_logo_3.png</url>
+                        </icon>
+                </iconList>
+        </device>
 </root>
+""".format(IP, HTTP_PORT, IP).replace("\n", "\r\n")
+
+NEWDEVELOPER_JSON = """
+{{"lights":{{"1":{{"state":{{"on":true,"bri":254,"hue":4444,"sat":254,"xy":[0.0,0.0],"ct":0,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"Hue Lamp 1","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"2":{{"state":{{"on":true,"bri":254,"hue":23536,"sat":144,"xy":[0.0,0.0],"ct":201,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"Hue Lamp 2","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"3":{{"state":{{"on":true,"bri":254,"hue":65136,"sat":254,"xy":[0.0,0.0],"ct":201,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"Hue Lamp 3","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}}}},"schedules":{{"1":{{"time":"2012-10-29T12:00:00","description":"","name":"schedule","command":{{"body":{{"on":true,"xy":null,"bri":null,"transitiontime":null}},"address":"/api/newdeveloper/groups/0/action","method":"PUT"}}}}}},"config":{{"portalservices":false,"gateway":"192.168.2.1","mac":"00:17:88:17:12:2c","swversion":"01005215","linkbutton":false,"ipaddress":"{}:{}","proxyport":0,"swupdate":{{"text":"","notify":false,"updatestate":0,"url":""}},"netmask":"255.255.255.0","name":"Philips hue","dhcp":true,"proxyaddress":"","whitelist":{{"newdeveloper":{{"name":"test user","last use date":"2015-02-04T21:35:18","create date":"2012-10-29T12:00:00"}}}},"UTC":"2012-10-29T12:05:00"}},"groups":{{"1":{{"name":"Group 1","action":{{"on":true,"bri":254,"hue":33536,"sat":144,"xy":[0.346,0.3568],"ct":201,"alert":null,"effect":"none","colormode":"xy","reachable":null}},"lights":["1","2"]}}}},"scenes":{{}}}}
 """.format(IP, HTTP_PORT).replace("\n", "\r\n")
+
+
+NEWDEVELOPERSYNC_JSON = """
+[{{"success":{{"{}":""}}}}]
+""".format("username").replace("\n", "\r\n")
+
+#example template values: "true", "[0.0,0.0]", "Hue Lamp 1", "254", "201", [Repeat for lamp 2 and 3]
+# on, bri, xy, ct, name, [repeat]
+LIGHTSRESP_TEMPLATE_JSON = """
+{{"1":{{"state":{{"on":{},"bri":{},"hue":4444,"sat":254,"xy":{},"ct":{},"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"2":{{"state":{{"on":{},"bri":{},"hue":23536,"sat":144,"xy":{},"ct":{},"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"3":{{"state":{{"on":{},"bri":{},"hue":65136,"sat":254,"xy":{},"ct":{},"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}}}}
+""".replace("\n", "\r\n")
+
+#example template values: "on", "[0.0,0.0]", "Hue Lamp 1", "254", "201"
+# on, bri, xy, ct, name
+ONELIGHTRESP_TEMPLATE_JSON = """
+{{"state":{{"on":{},"bri":{},"hue":23536,"sat":144,"xy":{},"ct":{},"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}}
+""".replace("\n", "\r\n")
+
+
+#example template values: "1", "on", "true"
+PUTRESP_TEMPLATE_JSON = """
+[{{"success":{{"/lights/{}/state/{}":{}}}}}]
+""".replace("\n", "\r\n")
+
+JSON_HEADERS = """HTTP/1.1 200 OK
+Access-control-allow-headers: Content-Type
+Connection: close
+Pragma: no-cache
+Access-control-max-age: 0
+Access-control-allow-methods: POST, GET, OPTIONS, PUT, DELETE
+Content-type: application/json; charset=utf-8
+Access-control-allow-origin: *
+Access-control-allow-credentials: true
+Expires: Mon, 1 Aug 2011 09:00:00 GMT
+Cache-control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0
+""".replace("\n", "\r\n")
+
 
 ICON_HEADERS = """HTTP/1.1 200 OK
 Content-type: image/png
@@ -94,90 +166,235 @@ ICON_BIG = "iVBORw0KGgoAAAANSUhEUgAAAHgAAAB4CAYAAAA5ZDbSAAAAB3RJTUUH3AgNBw4nVfRr
 
 
 class Broadcaster(Thread):
-	interrupted = False
-	def run(self):
-		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-		sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 20)
-		
-		while True:
-			sock.sendto(UPNP_BROADCAST, (BCAST_IP, UPNP_PORT))
-			for x in range(BROADCAST_INTERVAL):
-				time.sleep(1)
-				if self.interrupted:
-					sock.close()
-					return
+        interrupted = False
+        def run(self):
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 20)
 
-	def stop(self):
-		self.interrupted = True
+                while True:
+                        sock.sendto(UPNP_BROADCAST, (BCAST_IP, UPNP_PORT))
+                        for x in range(BROADCAST_INTERVAL):
+                                time.sleep(1)
+                                if self.interrupted:
+                                        sock.close()
+                                        return
+
+        def stop(self):
+                self.interrupted = True
  
 class Responder(Thread):
-	interrupted = False
-	def run(self):
-		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		sock.bind((IP, UPNP_PORT))
-		sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, socket.inet_aton(BCAST_IP) + socket.inet_aton(IP));
-		sock.settimeout(1)
-	 	while True:
-			try:
-				data, addr = sock.recvfrom(1024)
-			except socket.error:
-				if self.interrupted:
-					sock.close()
-					return
-			else:
-				if M_SEARCH_REQ_MATCH in data:
-					print "received M-SEARCH from ", addr, "\n", data
-					self.respond(addr)
-		
+        interrupted = False
+        def run(self):
+#               sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+#               sock.bind((IP, UPNP_PORT))
+#               sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, socket.inet_aton(BCAST_IP) + socket.inet_aton(IP));
 
-	def stop(self):
-		self.interrupted = True
+#found this alternative method of binding in case there are other UPNP services running on port 1900
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind(('', UPNP_PORT))
+                mreq = struct.pack("4sl", socket.inet_aton(BCAST_IP), socket.INADDR_ANY)
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
-	def respond(self, addr):
-		outSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-		outSock.sendto(UPNP_RESPOND, addr)
-		outSock.close()
-		print "Response sent"
+                sock.settimeout(1)
+                while True:
+                        try:
+                                data, addr = sock.recvfrom(1024)
+                        except socket.error:
+                                if self.interrupted:
+                                        sock.close()
+                                        return
+                        else:
+                                if M_SEARCH_REQ_MATCH in data:
+                                        L.info("received M-SEARCH from {}".format(addr))
+                                        L.debug(" data:\n{}".format(data.strip()))
+                                        #Reply back with same ST
+                                        if "schemas-upnp-org:device:basic:1" in data:
+                                                L.debug("received schemas-upnp-org:device:basic:1")
+                                                sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"schemas-upnp-org:device:basic:1"), addr)
+                                                L.info("Response sent")
+                                        elif "upnp:rootdevice" in data:
+                                                L.debug("received upnp:rootdevice")
+                                                sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"upnp:rootdevice"), addr)
+                                                L.info("Response sent")
+                                        else:
+                                                L.debug("ignoring")
+                                        L.debug("----------------------")
+                                        L.debug("  ")
+
+        def stop(self):
+                self.interrupted = True
+
+#don't want to make a new socket--need to reuse same port
+#       def respond(self, addr):
+#               outSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+#               outSock.sendto(UPNP_RESPOND, addr)
+#               outSock.close()
+#               print "Response sent"
 
 class Httpd(Thread):
-	def run(self):
-		self.server = SocketServer.ThreadingTCPServer((IP, HTTP_PORT), HttpdRequestHandler)
-		self.server.allow_reuse_address = True
-		self.server.serve_forever()	
+        def run(self):
+                self.server = SocketServer.ThreadingTCPServer((IP, HTTP_PORT), HttpdRequestHandler)
+                self.server.allow_reuse_address = True
+                self.server.serve_forever()
 
-	def stop(self):
-		self.server.shutdown()
+        def stop(self):
+                self.server.shutdown()
 
 class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
-	def handle(self):
-		data = self.request.recv(1024)
-		if "description.xml" in data:
-			self.request.sendall(DESCRIPTION_XML)
-		elif "hue_logo_0.png" in data:
-			self.request.sendall(ICON_HEADERS)
-			self.request.sendall(ICON_SMALL.decode('base64'))
-		elif "hue_logo_3.png" in data:
-			self.request.sendall(ICON_HEADERS)
-			self.request.sendall(ICON_BIG.decode('base64'))
-		else:
-			self.request.sendall("HTTP/1.1 404 Not Found")
-		
-if __name__ == '__main__':
-	responder = Responder()
-	broadcaster = Broadcaster()
-	httpd = Httpd()
-	responder.start()
-	broadcaster.start()
-	httpd.start()
-	try:
-		while True:
-			responder.join(1)
-			broadcaster.join(1)
-			httpd.join(1)
-	except (KeyboardInterrupt, SystemExit):
-		print "Exiting"
-	responder.stop()
-	broadcaster.stop()
-	httpd.stop()
+        def handle(self):
+                global HUE1ON, HUE1XY, HUE1BRI, HUE1CT, HUE2ON, HUE2XY, HUE2BRI, HUE2CT, HUE3ON, HUE3XY, HUE3BRI, HUE3CT
+                L.info("http request from {}".format(self.client_address[0]))
+                data = self.request.recv(1024)
+                #all data isnt always sent right away--try a couple more time
+                if "\r\n\r\n" not in data:
+                        data += self.request.recv(1024) #try one more time
+                if "\r\n\r\n" not in data:
+                        data += self.request.recv(1024) #try one more time then give up
+                searchObj = re.search( r'content-length: (\d+)', data, re.I)
+                if searchObj:
+                        #got the header--now grab the remaining content if any
+                        data += self.request.recv(int(searchObj.group(1)))
+                L.debug("HTTP Request: {}".format(data.strip()))
 
+                if "description.xml" in data:
+                        time.sleep(1)
+                        self.request.sendall(DESCRIPTION_XML)
+                        L.info("Sent HTTP Response")
+
+                elif "hue_logo_0.png" in data:
+                        self.request.sendall(ICON_HEADERS)
+                        self.request.sendall(ICON_SMALL.decode('base64'))
+                elif "hue_logo_3.png" in data:
+                        self.request.sendall(ICON_HEADERS)
+                        self.request.sendall(ICON_BIG.decode('base64'))
+
+                #Request for all lights
+                elif "/api/lights " in data:
+                        time.sleep(1)
+                        self.request.sendall(JSON_HEADERS)
+                        self.request.sendall(LIGHTSRESP_TEMPLATE_JSON.format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME, HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME, HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME))
+                        L.debug("Sent HTTP All Lights Response: {}-{}-{}-{}-{} |  {}-{}-{}-{}-{} | {}-{}-{}-{}-{}".format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME, HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME, HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME))
+
+                #PUT instruction to do something
+                #Example (hue3-light-off): 
+                #PUT /api/lights/3/state HTTP/1.1
+                #{"on":false}            resp: [{"success":{"/lights/3/state/on":false}}]
+                # or (change color)
+                #{"xy":[0.4617,0.4579]}  resp: [{"success":{"/lights/3/state/xy":[0.4617,0.4579]}}]
+                # or (multiple commands (on and bri) (only handle first item for now)
+                #{"on":true,"bri":254}   resp: [{"success":{"/lights/2/state/on":true}}]
+                elif "PUT /api/lights" in data:
+                        L.debug("Got PUT request to do something")
+                        time.sleep(1)
+                        reqHueNo = "1"
+                        reqCmd = "on"
+                        reqValue = "true"
+                        matchObj = re.match( r'PUT /api/lights/(\d+)/state', data, re.I)
+                        if matchObj: reqHueNo = matchObj.group(1)
+                        #note: only handling first element if multiple (for now)
+                        searchObj = re.search( r'\{"(.*?)":(.*?)[,\}]', data, re.I)
+                        if searchObj:
+                                reqCmd = searchObj.group(1)
+                                reqValue = searchObj.group(2)
+                        L.debug("PUT Request: {} |-| {} |-| {}".format(reqHueNo, reqCmd, reqValue))
+
+                        #Update Global Hue States
+                        if reqHueNo == "1":
+                                if reqCmd == "on":
+                                        HUE1ON = reqValue
+                                elif reqCmd == "xy":
+                                        HUE1XY = reqValue
+                                elif reqCmd == "bri":
+                                        HUE1BRI = reqValue
+                                elif reqCmd == "ct":
+                                        HUE1CT = reqValue
+                        elif reqHueNo == "2":
+                                if reqCmd == "on":
+                                        HUE2ON = reqValue
+                                elif reqCmd == "xy":
+                                        HUE2XY = reqValue
+                                elif reqCmd == "bri":
+                                        HUE2BRI = reqValue
+                                elif reqCmd == "ct":
+                                        HUE2CT = reqValue
+                        elif reqHueNo == "3":
+                                if reqCmd == "on":
+                                        HUE3ON = reqValue
+                                elif reqCmd == "xy":
+                                        HUE3XY = reqValue
+                                elif reqCmd == "bri":
+                                        HUE3BRI = reqValue
+                                elif reqCmd == "ct":
+                                        HUE3CT = reqValue
+
+                        #Use external program to do "stuff" if desired
+                        subprocess.Popen([EXTERNALPROG, reqHueNo, reqCmd, reqValue])
+
+                        self.request.sendall(JSON_HEADERS)
+                        self.request.sendall(PUTRESP_TEMPLATE_JSON.format(reqHueNo,reqCmd,reqValue))
+                        L.debug("Sent HTTP Put Response: {}".format(PUTRESP_TEMPLATE_JSON.format(reqHueNo,reqCmd,reqValue)))
+
+                #All other PUT /api/ send back a blank response
+                elif "PUT /api/" in data:
+                        time.sleep(1)
+                        self.request.sendall(JSON_HEADERS)
+                        L.debug("Sent blank JSON response")
+
+                #Requesting the state of just one light
+                elif "/api/lights/" in data:
+                        time.sleep(1)
+                        reqHueNo = "1"
+                        matchObj = re.match( r'GET /api/lights/(\d+) ', data, re.I)
+                        if matchObj: reqHueNo = matchObj.group(1)
+                        OneResp = ONELIGHTRESP_TEMPLATE_JSON.format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME)
+                        if reqHueNo == "2":
+                                OneResp = ONELIGHTRESP_TEMPLATE_JSON.format(HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME)
+                        elif reqHueNo == "3":
+                                OneResp = ONELIGHTRESP_TEMPLATE_JSON.format(HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME)
+                        self.request.sendall(JSON_HEADERS)
+                        self.request.sendall(OneResp)
+                        L.debug("Sent HTTP Individual Light Response: {}".format(OneResp))
+
+                #Assuming this is a new device registration
+                elif "GET /api/" in data:
+                        newDev = "newdeveloper"
+                        matchObj = re.match( r'GET /api/(.+) ', data, re.I)
+                        if matchObj: newDev = matchObj.group(1)
+                        L.info("Got request for new dev: {}".format(newDev))
+                        time.sleep(1)
+                        self.request.sendall(JSON_HEADERS)
+                        self.request.sendall(NEWDEVELOPER_JSON)
+                        L.info("Sent HTTP New Dev Response")
+
+                #I only saw a POST when registering the username
+                elif "POST /api/" in data:
+                        time.sleep(1)
+                        self.request.sendall(JSON_HEADERS)
+                        self.request.sendall(NEWDEVELOPERSYNC_JSON)
+                        L.info("Sent HTTP New Dev Sync Response")
+
+                else:
+                        self.request.sendall("HTTP/1.1 404 Not Found")
+
+                L.debug("-------------------------------")
+                L.debug("    ")
+
+if __name__ == '__main__':
+        responder = Responder()
+        broadcaster = Broadcaster()
+        httpd = Httpd()
+        responder.start()
+        broadcaster.start()
+        httpd.start()
+        try:
+                while True:
+                        responder.join(1)
+                        broadcaster.join(1)
+                        httpd.join(1)
+        except (KeyboardInterrupt, SystemExit):
+                L.info("Waiting for connections to end before exiting")
+        responder.stop()
+        broadcaster.stop()
+        httpd.stop()
 
