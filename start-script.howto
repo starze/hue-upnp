@@ -1,0 +1,43 @@
+#!/bin/sh
+#
+# This is a very basic start script for Linux.  You will want to set up a log rotation if the
+# log gets too big.  Also if you restart, the log will get overwritten.  Another thing you 
+# may want to do is edit the python script and change DEBUG to INFO or ERROR to reduce the 
+# logging. 
+#
+# To use this, update the HUEUPNPDIR path below to the location that you placed code.
+# Then copy it to your /etc/init.d dir, set permissions, and link to rc dirs 
+# e.g.
+# sudo copy hueUpnp.howto /etc/init.d/hueUpnp
+# sudo chmod 755 /etc/init.d/hueUpnp
+# sudo update-rc.d hueUpnp defaults    #ubuntu command
+#
+# To start manually:
+# sudo /etc/init.d/hueUpnp start
+#
+# Log file: /var/log/hueUpnp.log
+# 
+
+HUEUPNPDIR=/usr/share/hue-upnp
+
+# Some things that run always
+touch /var/lock/hueUpnp
+
+# Carry out specific functions when asked to by the system
+case "$1" in
+  start)
+    echo "Starting hueUpnp"
+    cd  $HUEUPNPDIR
+    python hueUpnp.py > /var/log/hueUpnp.log 2>&1 &
+    ;;
+  stop)
+    echo "Stopping hueUpnp"
+    /usr/bin/pkill -f "hueUpnp.py"
+    ;;
+  *)
+    echo "Usage: /etc/init.d/hueUpnp {start|stop}"
+    exit 1
+    ;;
+esac
+
+exit 0
