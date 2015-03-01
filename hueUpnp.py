@@ -181,7 +181,7 @@ class Broadcaster(Thread):
 
         def stop(self):
                 self.interrupted = True
- 
+
 class Responder(Thread):
         interrupted = False
         def run(self):
@@ -212,11 +212,11 @@ class Responder(Thread):
                                         if "schemas-upnp-org:device:basic:1" in data:
                                                 L.debug("received schemas-upnp-org:device:basic:1")
                                                 sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"schemas-upnp-org:device:basic:1"), addr)
-                                                L.info("Response sent")
+                                                L.info("Response sent: http://{}:{}/description.xml".format(IP,HTTP_PORT))
                                         elif "upnp:rootdevice" in data:
                                                 L.debug("received upnp:rootdevice")
                                                 sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"upnp:rootdevice"), addr)
-                                                L.info("Response sent")
+                                                L.info("Response sent: http://{}:{}/description.xml".format(IP,HTTP_PORT))
                                         else:
                                                 L.debug("ignoring")
                                         L.debug("----------------------")
@@ -258,7 +258,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                 L.debug("HTTP Request: {}".format(data.strip()))
 
                 if "description.xml" in data:
-                        time.sleep(1)
+                        #time.sleep(1)  #I don't think we need to have a delay
                         self.request.sendall(DESCRIPTION_XML)
                         L.info("Sent HTTP Response")
 
@@ -271,13 +271,13 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
 
                 #Request for all lights
                 elif "/api/lights " in data:
-                        time.sleep(1)
+                        time.sleep(1)  #I don't think we need to have a delay
                         self.request.sendall(JSON_HEADERS)
                         self.request.sendall(LIGHTSRESP_TEMPLATE_JSON.format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME, HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME, HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME))
                         L.debug("Sent HTTP All Lights Response: {}-{}-{}-{}-{} |  {}-{}-{}-{}-{} | {}-{}-{}-{}-{}".format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME, HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME, HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME))
 
                 #PUT instruction to do something
-                #Example (hue3-light-off): 
+                #Example (hue3-light-off):
                 #PUT /api/lights/3/state HTTP/1.1
                 #{"on":false}            resp: [{"success":{"/lights/3/state/on":false}}]
                 # or (change color)
@@ -286,7 +286,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                 #{"on":true,"bri":254}   resp: [{"success":{"/lights/2/state/on":true}}]
                 elif "PUT /api/lights" in data:
                         L.debug("Got PUT request to do something")
-                        time.sleep(1)
+                        #time.sleep(1) #let's not add a delay
                         reqHueNo = "1"
                         reqCmd = "on"
                         reqValue = "true"
@@ -337,13 +337,13 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
 
                 #All other PUT /api/ send back a blank response
                 elif "PUT /api/" in data:
-                        time.sleep(1)
+                        time.sleep(1)  #I don't think we need to have a delay
                         self.request.sendall(JSON_HEADERS)
                         L.debug("Sent blank JSON response")
 
                 #Requesting the state of just one light
                 elif "/api/lights/" in data:
-                        time.sleep(1)
+                        time.sleep(1)  #I don't think we need to have a delay
                         reqHueNo = "1"
                         matchObj = re.match( r'GET /api/lights/(\d+) ', data, re.I)
                         if matchObj: reqHueNo = matchObj.group(1)
@@ -362,14 +362,14 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                         matchObj = re.match( r'GET /api/(.+) ', data, re.I)
                         if matchObj: newDev = matchObj.group(1)
                         L.info("Got request for new dev: {}".format(newDev))
-                        time.sleep(1)
+                        time.sleep(1)  #I don't think we need to have a delay
                         self.request.sendall(JSON_HEADERS)
                         self.request.sendall(NEWDEVELOPER_JSON)
                         L.info("Sent HTTP New Dev Response")
 
                 #I only saw a POST when registering the username
                 elif "POST /api/" in data:
-                        time.sleep(1)
+                        time.sleep(1)  #I don't think we need to have a delay
                         self.request.sendall(JSON_HEADERS)
                         self.request.sendall(NEWDEVELOPERSYNC_JSON)
                         L.info("Sent HTTP New Dev Sync Response")
@@ -397,4 +397,5 @@ if __name__ == '__main__':
         responder.stop()
         broadcaster.stop()
         httpd.stop()
+
 
