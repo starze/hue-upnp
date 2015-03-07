@@ -9,6 +9,9 @@ IP = "192.168.1.200" # Callback http webserver IP (this machine)
 HTTP_PORT = 8080 # HTTP-port to serve icons, xml, json (80 is most compatible but requires root)
 #external script to easily call other activities (e.g. wol, wemo-switch, etc)
 EXTERNALPROG = "./hue-upnp-helper.sh"
+GATEWAYIP = "192.168.1.1" # shouldn't matter but feel free to adjust
+MACADDRESS = "00:17:88:17:12:2c" # shouldn't matter but feel free to adjust
+SERIALNO = re.sub(':','',MACADDRESS) # same as the MACADDRESS with colons removed
 
 #Setup Logging Output
 logFormatter = logging.Formatter("%(asctime)s [%(levelname)-5.5s] %(message)s")
@@ -46,9 +49,9 @@ LOCATION: http://{}:{}/description.xml
 SERVER: FreeRTOS/6.0.5, UPnP/1.0, IpBridge/0.1
 NTS: ssdp:alive
 NT: upnp:rootdevice
-USN: uuid:2f402f80-da50-11e1-9b23-00178817122c::upnp:rootdevice
+USN: uuid:2f402f80-da50-11e1-9b23-{}::upnp:rootdevice
 
-""".format(IP, HTTP_PORT).replace("\n", "\r\n")
+""".format(IP, HTTP_PORT,SERIALNO).replace("\n", "\r\n")
 
 
 #IP, PORT, ST
@@ -58,7 +61,7 @@ EXT:
 LOCATION: http://{}:{}/description.xml
 SERVER: FreeRTOS/6.0.5, UPnP/1.0, IpBridge/0.1
 ST: {}
-USN: uuid:2f402f80-da50-11e1-9b23-00178817122c::upnp:rootdevice
+USN: uuid:2f402f80-da50-11e1-9b23-{}::upnp:rootdevice
 
 """.replace("\n", "\r\n")
 
@@ -83,8 +86,8 @@ Connection: Keep-Alive
                 <modelName>Philips hue bridge 2012 Router</modelName>
                 <modelNumber>929000226503</modelNumber>
                 <modelURL>http://www.meethue.com</modelURL>
-                <serialNumber>00178817122c</serialNumber>
-                <UDN>uuid:2f402f80-da50-11e1-9b23-00178817122c</UDN>
+                <serialNumber>{}</serialNumber>
+                <UDN>uuid:2f402f80-da50-11e1-9b23-{}</UDN>
                 <serviceList>
                         <service>
                                 <serviceType>(null)</serviceType>
@@ -113,11 +116,11 @@ Connection: Keep-Alive
                 </iconList>
         </device>
 </root>
-""".format(IP, HTTP_PORT, IP).replace("\n", "\r\n")
+""".format(IP, HTTP_PORT, IP, SERIALNO, SERIALNO).replace("\n", "\r\n")
 
 NEWDEVELOPER_JSON = """
-{{"lights":{{"1":{{"state":{{"on":true,"bri":254,"hue":4444,"sat":254,"xy":[0.0,0.0],"ct":0,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"Hue Lamp 1","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"2":{{"state":{{"on":true,"bri":254,"hue":23536,"sat":144,"xy":[0.0,0.0],"ct":201,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"Hue Lamp 2","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"3":{{"state":{{"on":true,"bri":254,"hue":65136,"sat":254,"xy":[0.0,0.0],"ct":201,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"Hue Lamp 3","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}}}},"schedules":{{"1":{{"time":"2012-10-29T12:00:00","description":"","name":"schedule","command":{{"body":{{"on":true,"xy":null,"bri":null,"transitiontime":null}},"address":"/api/newdeveloper/groups/0/action","method":"PUT"}}}}}},"config":{{"portalservices":false,"gateway":"192.168.2.1","mac":"00:17:88:17:12:2c","swversion":"01005215","linkbutton":false,"ipaddress":"{}:{}","proxyport":0,"swupdate":{{"text":"","notify":false,"updatestate":0,"url":""}},"netmask":"255.255.255.0","name":"Philips hue","dhcp":true,"proxyaddress":"","whitelist":{{"newdeveloper":{{"name":"test user","last use date":"2015-02-04T21:35:18","create date":"2012-10-29T12:00:00"}}}},"UTC":"2012-10-29T12:05:00"}},"groups":{{"1":{{"name":"Group 1","action":{{"on":true,"bri":254,"hue":33536,"sat":144,"xy":[0.346,0.3568],"ct":201,"alert":null,"effect":"none","colormode":"xy","reachable":null}},"lights":["1","2"]}}}},"scenes":{{}}}}
-""".format(IP, HTTP_PORT).replace("\n", "\r\n")
+{{"lights":{{"1":{{"state":{{"on":true,"bri":254,"hue":4444,"sat":254,"xy":[0.0,0.0],"ct":0,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"Hue Lamp 1","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"2":{{"state":{{"on":true,"bri":254,"hue":23536,"sat":144,"xy":[0.0,0.0],"ct":201,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"Hue Lamp 2","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"3":{{"state":{{"on":true,"bri":254,"hue":65136,"sat":254,"xy":[0.0,0.0],"ct":201,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"Hue Lamp 3","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}}}},"schedules":{{"1":{{"time":"2012-10-29T12:00:00","description":"","name":"schedule","command":{{"body":{{"on":true,"xy":null,"bri":null,"transitiontime":null}},"address":"/api/newdeveloper/groups/0/action","method":"PUT"}}}}}},"config":{{"portalservices":false,"gateway":"{}","mac":"{}","swversion":"01005215","linkbutton":false,"ipaddress":"{}:{}","proxyport":0,"swupdate":{{"text":"","notify":false,"updatestate":0,"url":""}},"netmask":"255.255.255.0","name":"Philips hue","dhcp":true,"proxyaddress":"","whitelist":{{"newdeveloper":{{"name":"test user","last use date":"2015-02-04T21:35:18","create date":"2012-10-29T12:00:00"}}}},"UTC":"2012-10-29T12:05:00"}},"groups":{{"1":{{"name":"Group 1","action":{{"on":true,"bri":254,"hue":33536,"sat":144,"xy":[0.346,0.3568],"ct":201,"alert":null,"effect":"none","colormode":"xy","reachable":null}},"lights":["1","2"]}}}},"scenes":{{}}}}
+""".format(GATEWAYIP, MACADDRESS, IP, HTTP_PORT).replace("\n", "\r\n")
 
 
 NEWDEVELOPERSYNC_JSON = """
@@ -209,13 +212,13 @@ class Responder(Thread):
                                         L.info("received M-SEARCH from {}".format(addr))
                                         L.debug(" data:\n{}".format(data.strip()))
                                         #Reply back with same ST
-                                        if "schemas-upnp-org:device:basic:1" in data:
-                                                L.debug("received schemas-upnp-org:device:basic:1")
-                                                sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"schemas-upnp-org:device:basic:1"), addr)
+                                        if "urn:schemas-upnp-org:device:basic:1" in data:
+                                                L.debug("received urn:schemas-upnp-org:device:basic:1")
+                                                sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"urn:schemas-upnp-org:device:basic:1",SERIALNO), addr)
                                                 L.info("Response sent: http://{}:{}/description.xml".format(IP,HTTP_PORT))
                                         elif "upnp:rootdevice" in data:
                                                 L.debug("received upnp:rootdevice")
-                                                sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"upnp:rootdevice"), addr)
+                                                sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"upnp:rootdevice",SERIALNO), addr)
                                                 L.info("Response sent: http://{}:{}/description.xml".format(IP,HTTP_PORT))
                                         else:
                                                 L.debug("ignoring")
@@ -397,5 +400,3 @@ if __name__ == '__main__':
         responder.stop()
         broadcaster.stop()
         httpd.stop()
-
-
