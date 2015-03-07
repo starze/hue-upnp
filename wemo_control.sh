@@ -6,7 +6,7 @@
 # from: http://wemo.forumatic.com/viewtopic.php?f=2&t=5
 # Changed default first port to 49153
 #
-# Usage: ./wemo_control IP_ADDRESS ON/OFF/GETSTATE/GETSIGNALSTRENGTH/GETFRIENDLYNAME
+# Usage: ./wemo_control.sh IP_ADDRESS ON/OFF/GETSTATE/GETSIGNALSTRENGTH/GETFRIENDLYNAME
 #
 #
 IP=$1
@@ -14,7 +14,7 @@ COMMAND=$2
 
 if [ "$2" = "" ]
    then
-      echo "Usage: ./wemo_control IP_ADDRESS ON|OFF|GETSTATE [PORT]"
+      echo "Usage: ./wemo_control.sh IP_ADDRESS ON|OFF|GETSTATE [PORT]"
 else
 
     PORT=0
@@ -41,7 +41,7 @@ else
 
     if [ "$1" = "" ]
        then
-          echo "Usage: ./wemo_control IP_ADDRESS ON|OFF"
+          echo "Usage: ./wemo_control.sh IP_ADDRESS ON|OFF"
     else
        echo "Port = "$PORT
 
@@ -72,7 +72,7 @@ grep "<BinaryState"  | cut -d">" -f2 | cut -d "<" -f1 | sed 's/0/OFF/g' | sed 's
 
           echo "COMMAND NOT RECOGNIZED"
           echo ""
-          echo "Usage: ./wemo_control IP_ADDRESS ON|OFF|GETSTATE  [PORT]"
+          echo "Usage: ./wemo_control.sh IP_ADDRESS ON|OFF|GETSTATE [PORT]"
           echo ""
 
        fi
