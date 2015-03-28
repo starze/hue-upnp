@@ -4,7 +4,7 @@
 #
 # rich@netmagi.com
 # from: http://wemo.forumatic.com/viewtopic.php?f=2&t=5
-# Changed default first port to 49153
+# Changed logic to find port
 #
 # Usage: ./wemo_control.sh IP_ADDRESS ON/OFF/GETSTATE/GETSIGNALSTRENGTH/GETFRIENDLYNAME
 #
@@ -18,16 +18,25 @@ if [ "$2" = "" ]
 else
 
     PORT=0
+    PREVIOUSPORT=""
+
+    #check for a previous working port
+    if [ -e "${1}.port" ]; then
+      PREVIOUSPORT=`cat "${1}.port"`;
+    fi
 
     #The default port loves to change after power outages
     #added in the ability to pass in the port to use as the first check ($3)
-    for PTEST in $3 49153 49154 49152 49155
+    #Also added in the ability to reuse the last successful port
+    for PTEST in $3 $PREVIOUSPORT 49153 49154 49152 49155
     do
             PORTTEST=$(curl -s -m 3 $IP:$PTEST | grep "404")
 
             if [ "$PORTTEST" != "" ]
                then
                PORT=$PTEST
+               #save port if current dir is writable
+               echo -n "$PTEST" > "${1}.port" 2>/dev/null
                break
             fi
     done
