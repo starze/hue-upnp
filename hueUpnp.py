@@ -1,4 +1,4 @@
-import socket, struct, time, SocketServer, re, subprocess, sys, logging, logging.handlers
+import socket, struct, time, SocketServer, re, subprocess, sys, logging, logging.handlers, thread
 from threading import Thread
 
 #config
@@ -22,17 +22,17 @@ consoleHandler.setFormatter(logFormatter)
 L.addHandler(consoleHandler)
 
 #GLOBAL HUE STATES
-HUE1NAME = "Hue Lamp 1"
+HUE1NAME = "Hue Lamp 1" #Default: Hue Lamp 1
 HUE1ON = "true"
 HUE1XY = "[0.0,0.0]"
 HUE1BRI = "254"
 HUE1CT = "201"
-HUE2NAME = "Hue Lamp 2"
+HUE2NAME = "Hue Lamp 2" #Default: Hue Lamp 2
 HUE2ON = "true"
 HUE2XY = "[0.0,0.0]"
 HUE2BRI = "254"
 HUE2CT = "201"
-HUE3NAME = "Hue Lamp 3"
+HUE3NAME = "Hue Lamp 3" #Default: Hue Lamp 3
 HUE3ON = "true"
 HUE3XY = "[0.0,0.0]"
 HUE3BRI = "254"
@@ -119,8 +119,8 @@ Connection: Keep-Alive
 """.format(IP, HTTP_PORT, IP, SERIALNO, SERIALNO).replace("\n", "\r\n")
 
 NEWDEVELOPER_JSON = """
-{{"lights":{{"1":{{"state":{{"on":true,"bri":254,"hue":4444,"sat":254,"xy":[0.0,0.0],"ct":0,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"Hue Lamp 1","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"2":{{"state":{{"on":true,"bri":254,"hue":23536,"sat":144,"xy":[0.0,0.0],"ct":201,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"Hue Lamp 2","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"3":{{"state":{{"on":true,"bri":254,"hue":65136,"sat":254,"xy":[0.0,0.0],"ct":201,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"Hue Lamp 3","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}}}},"schedules":{{"1":{{"time":"2012-10-29T12:00:00","description":"","name":"schedule","command":{{"body":{{"on":true,"xy":null,"bri":null,"transitiontime":null}},"address":"/api/newdeveloper/groups/0/action","method":"PUT"}}}}}},"config":{{"portalservices":false,"gateway":"{}","mac":"{}","swversion":"01005215","linkbutton":false,"ipaddress":"{}:{}","proxyport":0,"swupdate":{{"text":"","notify":false,"updatestate":0,"url":""}},"netmask":"255.255.255.0","name":"Philips hue","dhcp":true,"proxyaddress":"","whitelist":{{"newdeveloper":{{"name":"test user","last use date":"2015-02-04T21:35:18","create date":"2012-10-29T12:00:00"}}}},"UTC":"2012-10-29T12:05:00"}},"groups":{{"1":{{"name":"Group 1","action":{{"on":true,"bri":254,"hue":33536,"sat":144,"xy":[0.346,0.3568],"ct":201,"alert":null,"effect":"none","colormode":"xy","reachable":null}},"lights":["1","2"]}}}},"scenes":{{}}}}
-""".format(GATEWAYIP, MACADDRESS, IP, HTTP_PORT).replace("\n", "\r\n")
+{{"lights":{{"1":{{"state":{{"on":true,"bri":254,"hue":4444,"sat":254,"xy":[0.0,0.0],"ct":0,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"2":{{"state":{{"on":true,"bri":254,"hue":23536,"sat":144,"xy":[0.0,0.0],"ct":201,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"3":{{"state":{{"on":true,"bri":254,"hue":65136,"sat":254,"xy":[0.0,0.0],"ct":201,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}}}},"schedules":{{"1":{{"time":"2012-10-29T12:00:00","description":"","name":"schedule","command":{{"body":{{"on":true,"xy":null,"bri":null,"transitiontime":null}},"address":"/api/newdeveloper/groups/0/action","method":"PUT"}}}}}},"config":{{"portalservices":false,"gateway":"{}","mac":"{}","swversion":"01005215","linkbutton":false,"ipaddress":"{}:{}","proxyport":0,"swupdate":{{"text":"","notify":false,"updatestate":0,"url":""}},"netmask":"255.255.255.0","name":"Philips hue","dhcp":true,"proxyaddress":"","whitelist":{{"newdeveloper":{{"name":"test user","last use date":"2015-02-04T21:35:18","create date":"2012-10-29T12:00:00"}}}},"UTC":"2012-10-29T12:05:00"}},"groups":{{"1":{{"name":"Group 1","action":{{"on":true,"bri":254,"hue":33536,"sat":144,"xy":[0.346,0.3568],"ct":201,"alert":null,"effect":"none","colormode":"xy","reachable":null}},"lights":["1","2"]}}}},"scenes":{{}}}}
+""".format(HUE1NAME, HUE2NAME, HUE3NAME, GATEWAYIP, MACADDRESS, IP, HTTP_PORT).replace("\n", "\r\n")
 
 
 NEWDEVELOPERSYNC_JSON = """
@@ -132,6 +132,7 @@ NEWDEVELOPERSYNC_JSON = """
 LIGHTSRESP_TEMPLATE_JSON = """
 {{"1":{{"state":{{"on":{},"bri":{},"hue":4444,"sat":254,"xy":{},"ct":{},"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"2":{{"state":{{"on":{},"bri":{},"hue":23536,"sat":144,"xy":{},"ct":{},"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"3":{{"state":{{"on":{},"bri":{},"hue":65136,"sat":254,"xy":{},"ct":{},"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}}}}
 """.replace("\n", "\r\n")
+
 
 #example template values: "on", "[0.0,0.0]", "Hue Lamp 1", "254", "201"
 # on, bri, xy, ct, name
@@ -229,7 +230,7 @@ class Responder(Thread):
                 self.interrupted = True
 
 #don't want to make a new socket--need to reuse same port
-#       def respond(self, addr):
+#Switch def respond(self, addr):
 #               outSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 #               outSock.sendto(UPNP_RESPOND, addr)
 #               outSock.close()
@@ -237,9 +238,13 @@ class Responder(Thread):
 
 class Httpd(Thread):
         def run(self):
-                self.server = SocketServer.ThreadingTCPServer((IP, HTTP_PORT), HttpdRequestHandler)
-                self.server.allow_reuse_address = True
-                self.server.serve_forever()
+                try:
+                        self.server = SocketServer.ThreadingTCPServer((IP, HTTP_PORT), HttpdRequestHandler)
+                        self.server.allow_reuse_address = True
+                        self.server.serve_forever()
+                except socket.error as msg:
+                        L.info("Http Socket Error: {}".format(msg))
+                        thread.interrupt_main()  #exiting program
 
         def stop(self):
                 self.server.shutdown()
@@ -249,13 +254,18 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                 global HUE1ON, HUE1XY, HUE1BRI, HUE1CT, HUE2ON, HUE2XY, HUE2BRI, HUE2CT, HUE3ON, HUE3XY, HUE3BRI, HUE3CT
                 L.info("http request from {}".format(self.client_address[0]))
                 data = self.request.recv(1024)
-                #all data isnt always sent right away--try a couple more time
+
+                #all data isnt always sent right away--try a couple more times
+                #2015-08: Logitech change the data flow slightly.  We seem to need to
+                # return the payload for "GET /api/lights" sooner.  The 1 sec sleeps
+                # have been removed and we only do another "request.recv" if the
+                # content-length is found and greater than 0
                 if "\r\n\r\n" not in data:
                         data += self.request.recv(1024) #try one more time
                 if "\r\n\r\n" not in data:
                         data += self.request.recv(1024) #try one more time then give up
                 searchObj = re.search( r'content-length: (\d+)', data, re.I)
-                if searchObj:
+                if searchObj and int(searchObj.group(1)) > 0:
                         #got the header--now grab the remaining content if any
                         data += self.request.recv(int(searchObj.group(1)))
                 L.debug("HTTP Request: {}".format(data.strip()))
@@ -263,7 +273,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                 if "description.xml" in data:
                         #time.sleep(1)  #I don't think we need to have a delay
                         self.request.sendall(DESCRIPTION_XML)
-                        L.info("Sent HTTP Response")
+                        L.info("Sent HTTP description.xml Response")
 
                 elif "hue_logo_0.png" in data:
                         self.request.sendall(ICON_HEADERS)
@@ -274,7 +284,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
 
                 #Request for all lights
                 elif "/api/lights " in data:
-                        time.sleep(1)  #I don't think we need to have a delay
+                        #time.sleep(1)  #I don't think we need to have a delay
                         self.request.sendall(JSON_HEADERS)
                         self.request.sendall(LIGHTSRESP_TEMPLATE_JSON.format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME, HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME, HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME))
                         L.debug("Sent HTTP All Lights Response: {}-{}-{}-{}-{} |  {}-{}-{}-{}-{} | {}-{}-{}-{}-{}".format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME, HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME, HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME))
@@ -340,13 +350,13 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
 
                 #All other PUT /api/ send back a blank response
                 elif "PUT /api/" in data:
-                        time.sleep(1)  #I don't think we need to have a delay
+                        #time.sleep(1)  #I don't think we need to have a delay
                         self.request.sendall(JSON_HEADERS)
                         L.debug("Sent blank JSON response")
 
                 #Requesting the state of just one light
                 elif "/api/lights/" in data:
-                        time.sleep(1)  #I don't think we need to have a delay
+                        #time.sleep(1)  #I don't think we need to have a delay
                         reqHueNo = "1"
                         matchObj = re.match( r'GET /api/lights/(\d+) ', data, re.I)
                         if matchObj: reqHueNo = matchObj.group(1)
@@ -365,14 +375,14 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                         matchObj = re.match( r'GET /api/(.+) ', data, re.I)
                         if matchObj: newDev = matchObj.group(1)
                         L.info("Got request for new dev: {}".format(newDev))
-                        time.sleep(1)  #I don't think we need to have a delay
+                        #time.sleep(1)  #I don't think we need to have a delay
                         self.request.sendall(JSON_HEADERS)
                         self.request.sendall(NEWDEVELOPER_JSON)
                         L.info("Sent HTTP New Dev Response")
 
                 #I only saw a POST when registering the username
                 elif "POST /api/" in data:
-                        time.sleep(1)  #I don't think we need to have a delay
+                        #time.sleep(1)  #I don't think we need to have a delay
                         self.request.sendall(JSON_HEADERS)
                         self.request.sendall(NEWDEVELOPERSYNC_JSON)
                         L.info("Sent HTTP New Dev Sync Response")
@@ -400,3 +410,5 @@ if __name__ == '__main__':
         responder.stop()
         broadcaster.stop()
         httpd.stop()
+
+
