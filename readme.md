@@ -26,22 +26,14 @@ Aug 2015:
 The Logitech firmware changed a bit on how it accepts communications.  For some reason it likes to send HTTP requests in two separate packets.  This is not new.  For example:
 
 Packet 1:
-
 GET /api/lights HTTP/1.1
 
 Packet 2:
-
 connection: close, TE
-
 content-length: 0
-
 user-agent: LuaSocket 2.0.2
-
 te: trailers
-
 content-type: application/json
-
 host: 192.168.1.10
-
 
 If we only acknowledge packet 1 and continue to wait for the rest of the data, it freaks out and terminates the connections. It seems that it wants to see the reponse *before* it has finished making the request.  I'm quite baffled on this.  Since the data in the second packet isn't required to respond, I now send the payload right away.  Packet 2 still gets sent, but it causes a RST packet to be generated since it is arriving after the connection is now done.  Oh well, it least it is working again.
