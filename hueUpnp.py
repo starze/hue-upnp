@@ -22,17 +22,17 @@ consoleHandler.setFormatter(logFormatter)
 L.addHandler(consoleHandler)
 
 #GLOBAL HUE STATES
-HUE1NAME = "Hue Lamp 1" #Default: Hue Lamp 1
+HUE1NAME = "PC WOL" #Default: Hue Lamp 1
 HUE1ON = "true"
 HUE1XY = "[0.0,0.0]"
 HUE1BRI = "254"
 HUE1CT = "201"
-HUE2NAME = "Hue Lamp 2" #Default: Hue Lamp 2
+HUE2NAME = "Wemo Outlet" #Default: Hue Lamp 2
 HUE2ON = "true"
 HUE2XY = "[0.0,0.0]"
 HUE2BRI = "254"
 HUE2CT = "201"
-HUE3NAME = "Hue Lamp 3" #Default: Hue Lamp 3
+HUE3NAME = "Wemo Light" #Default: Hue Lamp 3
 HUE3ON = "true"
 HUE3XY = "[0.0,0.0]"
 HUE3BRI = "254"
@@ -65,58 +65,63 @@ USN: uuid:2f402f80-da50-11e1-9b23-{}::upnp:rootdevice
 
 """.replace("\n", "\r\n")
 
-
+#updated modelName and removed extra tabs and \r to match examples on web
 DESCRIPTION_XML = """HTTP/1.1 200 OK
 Content-type: text/xml
 Connection: Keep-Alive
 
 <?xml version="1.0"?>
 <root xmlns="urn:schemas-upnp-org:device-1-0">
-        <specVersion>
-                <major>1</major>
-                <minor>0</minor>
-        </specVersion>
-        <URLBase>http://{}:{}/</URLBase>
-        <device>
-                <deviceType>urn:schemas-upnp-org:device:Basic:1</deviceType>
-                <friendlyName>Philips hue ({})</friendlyName>
-                <manufacturer>Royal Philips Electronics</manufacturer>
-                <manufacturerURL>http://www.philips.com</manufacturerURL>
-                <modelDescription>Philips hue Personal Wireless Lighting</modelDescription>
-                <modelName>Philips hue bridge 2012 Router</modelName>
-                <modelNumber>929000226503</modelNumber>
-                <modelURL>http://www.meethue.com</modelURL>
-                <serialNumber>{}</serialNumber>
-                <UDN>uuid:2f402f80-da50-11e1-9b23-{}</UDN>
-                <serviceList>
-                        <service>
-                                <serviceType>(null)</serviceType>
-                                <serviceId>(null)</serviceId>
-                                <controlURL>(null)</controlURL>
-                                <eventSubURL>(null)</eventSubURL>
-                                <SCPDURL>(null)</SCPDURL>
-                        </service>
-                </serviceList>
-                <presentationURL>index.html</presentationURL>
-                <iconList>
-                        <icon>
-                                <mimetype>image/png</mimetype>
-                                <height>48</height>
-                                <width>48</width>
-                                <depth>24</depth>
-                                <url>hue_logo_0.png</url>
-                        </icon>
-                        <icon>
-                                <mimetype>image/png</mimetype>
-                                <height>120</height>
-                                <width>120</width>
-                                <depth>24</depth>
-                                <url>hue_logo_3.png</url>
-                        </icon>
-                </iconList>
-        </device>
+<specVersion>
+<major>1</major>
+<minor>0</minor>
+</specVersion>
+<URLBase>http://{}:{}/</URLBase>
+<device>
+<deviceType>urn:schemas-upnp-org:device:Basic:1</deviceType>
+<friendlyName>Philips hue ({})</friendlyName>
+<manufacturer>Royal Philips Electronics</manufacturer>
+<manufacturerURL>http://www.philips.com</manufacturerURL>
+<modelDescription>Philips hue Personal Wireless Lighting</modelDescription>
+<modelName>Philips hue bridge 2012</modelName>
+<modelNumber>929000226503</modelNumber>
+<modelURL>http://www.meethue.com</modelURL>
+<serialNumber>{}</serialNumber>
+<UDN>uuid:2f402f80-da50-11e1-9b23-{}</UDN>
+<serviceList>
+<service>
+<serviceType>(null)</serviceType>
+<serviceId>(null)</serviceId>
+<controlURL>(null)</controlURL>
+<eventSubURL>(null)</eventSubURL>
+<SCPDURL>(null)</SCPDURL>
+</service>
+</serviceList>
+<presentationURL>index.html</presentationURL>
+<iconList>
+<icon>
+<mimetype>image/png</mimetype>
+<height>48</height>
+<width>48</width>
+<depth>24</depth>
+<url>hue_logo_0.png</url>
+</icon>
+<icon>
+<mimetype>image/png</mimetype>
+<height>120</height>
+<width>120</width>
+<depth>24</depth>
+<url>hue_logo_3.png</url>
+</icon>
+</iconList>
+</device>
 </root>
-""".format(IP, HTTP_PORT, IP, SERIALNO, SERIALNO).replace("\n", "\r\n")
+""".format(IP, HTTP_PORT, IP, SERIALNO, SERIALNO).replace("\n", "\n") #was \r\n
+
+#20150920-Added in case it is used for discovery
+APICONFIG_JSON = """
+[{{"swversion":"01008227","apiversion":"1.2.1","name":"Smartbridge 1","mac":"{}",}}]
+""".format(MACADDRESS).replace("\n", "\r\n")
 
 NEWDEVELOPER_JSON = """
 {{"lights":{{"1":{{"state":{{"on":true,"bri":254,"hue":4444,"sat":254,"xy":[0.0,0.0],"ct":0,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"2":{{"state":{{"on":true,"bri":254,"hue":23536,"sat":144,"xy":[0.0,0.0],"ct":201,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"3":{{"state":{{"on":true,"bri":254,"hue":65136,"sat":254,"xy":[0.0,0.0],"ct":201,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}}}},"schedules":{{"1":{{"time":"2012-10-29T12:00:00","description":"","name":"schedule","command":{{"body":{{"on":true,"xy":null,"bri":null,"transitiontime":null}},"address":"/api/newdeveloper/groups/0/action","method":"PUT"}}}}}},"config":{{"portalservices":false,"gateway":"{}","mac":"{}","swversion":"01005215","linkbutton":false,"ipaddress":"{}:{}","proxyport":0,"swupdate":{{"text":"","notify":false,"updatestate":0,"url":""}},"netmask":"255.255.255.0","name":"Philips hue","dhcp":true,"proxyaddress":"","whitelist":{{"newdeveloper":{{"name":"test user","last use date":"2015-02-04T21:35:18","create date":"2012-10-29T12:00:00"}}}},"UTC":"2012-10-29T12:05:00"}},"groups":{{"1":{{"name":"Group 1","action":{{"on":true,"bri":254,"hue":33536,"sat":144,"xy":[0.346,0.3568],"ct":201,"alert":null,"effect":"none","colormode":"xy","reachable":null}},"lights":["1","2"]}}}},"scenes":{{}}}}
@@ -212,13 +217,31 @@ class Responder(Thread):
                                 if M_SEARCH_REQ_MATCH in data:
                                         L.info("received M-SEARCH from {}".format(addr))
                                         L.debug(" data:\n{}".format(data.strip()))
-                                        #Reply back with same ST
+
+                                        #Reply back with same ST or rootdevice for ssdp:all
+                                        #20150920 - Conflicting data found online as to how the hue responds
+                                        # I found responding with basic:1 is the only thing that works with
+                                        # the Harmony.  Most examples online report rootdevice is what get
+                                        # sent.  Another observation is when using basic:1, the Harmony skips
+                                        # asking for the description.xml and goes and hits the JSON calls
+                                        # immediately (as of the 4.6.71 firmware).  If I send rootdevice,
+                                        # after about 30 seoonds the Harmony will ask for the description.xml,
+                                        # but still fails to connect.
+                                        # The Android Hue app will link only with rootdevice.
+                                        # Note: According to meethue.com the discovery is going to include the
+                                        # bridgeid soon.  May need to update to account for this in the future:
+                                        #http://www.developers.meethue.com/documentation/changes-bridge-discovery
+
                                         if "urn:schemas-upnp-org:device:basic:1" in data:
                                                 L.debug("received urn:schemas-upnp-org:device:basic:1")
                                                 sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"urn:schemas-upnp-org:device:basic:1",SERIALNO), addr)
                                                 L.info("Response sent: http://{}:{}/description.xml".format(IP,HTTP_PORT))
                                         elif "upnp:rootdevice" in data:
                                                 L.debug("received upnp:rootdevice")
+                                                sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"upnp:rootdevice",SERIALNO), addr)
+                                                L.info("Response sent: http://{}:{}/description.xml".format(IP,HTTP_PORT))
+                                        elif "ssdp:all" in data:
+                                                L.debug("received ssdp:all responding with upnp:rootdevice")
                                                 sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"upnp:rootdevice",SERIALNO), addr)
                                                 L.info("Response sent: http://{}:{}/description.xml".format(IP,HTTP_PORT))
                                         else:
@@ -369,16 +392,22 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                         self.request.sendall(OneResp)
                         L.debug("Sent HTTP Individual Light Response: {}".format(OneResp))
 
-                #Assuming this is a new device registration
+                #Assuming this is a new device registration or config request
                 elif "GET /api/" in data:
-                        newDev = "newdeveloper"
-                        matchObj = re.match( r'GET /api/(.+) ', data, re.I)
-                        if matchObj: newDev = matchObj.group(1)
-                        L.info("Got request for new dev: {}".format(newDev))
-                        #time.sleep(1)  #I don't think we need to have a delay
-                        self.request.sendall(JSON_HEADERS)
-                        self.request.sendall(NEWDEVELOPER_JSON)
-                        L.info("Sent HTTP New Dev Response")
+                        if "/config" in data:
+                                L.info("Got request for /config")
+                                self.request.sendall(JSON_HEADERS)
+                                self.request.sendall(APICONFIG_JSON)
+                                L.info("Sent API Config")
+                        else:
+                                newDev = "newdeveloper"
+                                matchObj = re.match( r'GET /api/(.+) ', data, re.I)
+                                if matchObj: newDev = matchObj.group(1)
+                                L.info("Got request for new dev: {}".format(newDev))
+                                #time.sleep(1)  #I don't think we need to have a delay
+                                self.request.sendall(JSON_HEADERS)
+                                self.request.sendall(NEWDEVELOPER_JSON)
+                                L.info("Sent HTTP New Dev Response")
 
                 #I only saw a POST when registering the username
                 elif "POST /api/" in data:
@@ -410,5 +439,4 @@ if __name__ == '__main__':
         responder.stop()
         broadcaster.stop()
         httpd.stop()
-
 
