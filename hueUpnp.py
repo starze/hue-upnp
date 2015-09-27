@@ -5,12 +5,12 @@ from threading import Thread
 BCAST_IP = "239.255.255.250"
 UPNP_PORT = 1900
 BROADCAST_INTERVAL = 200 # Seconds between upnp broadcast
-IP = "192.168.1.200" # Callback http webserver IP (this machine)
-HTTP_PORT = 8080 # HTTP-port to serve icons, xml, json (80 is most compatible but requires root)
+IP = "192.168.1.77" # Callback http webserver IP (this machine)
+HTTP_PORT = 80 # HTTP-port to serve icons, xml, json (80 is most compatible but requires root)
 #external script to easily call other activities (e.g. wol, wemo-switch, etc)
 EXTERNALPROG = "./hue-upnp-helper.sh"
 GATEWAYIP = "192.168.1.1" # shouldn't matter but feel free to adjust
-MACADDRESS = "00:17:88:17:12:2c" # shouldn't matter but feel free to adjust
+MACADDRESS = "b8:27:eb:06:9d:18" # shouldn't matter but feel free to adjust
 SERIALNO = re.sub(':','',MACADDRESS) # same as the MACADDRESS with colons removed
 
 #Setup Logging Output
@@ -66,11 +66,15 @@ USN: uuid:2f402f80-da50-11e1-9b23-{}::upnp:rootdevice
 """.replace("\n", "\r\n")
 
 
-DESCRIPTION_XML = """HTTP/1.1 200 OK
-Content-type: text/xml
-Connection: Keep-Alive
+DESCRIPTION_XML = """"HTTP/1.1 200 OK
+CACHE-CONTROL: max-age=86400
+EXT:
+LOCATION: http://{}:{}/description.xml
+SERVER: FreeRTOS/6.0.5, UPnP/1.0, IpBridge/0.1
+ST: urn:schemas-upnp-org:device:basic:1
+USN: uuid:Socket-1_0-221438K0100073::urn:schemas-upnp-org:device:basic:1
 
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <root xmlns="urn:schemas-upnp-org:device-1-0">
         <specVersion>
                 <major>1</major>
@@ -88,15 +92,6 @@ Connection: Keep-Alive
                 <modelURL>http://www.meethue.com</modelURL>
                 <serialNumber>{}</serialNumber>
                 <UDN>uuid:2f402f80-da50-11e1-9b23-{}</UDN>
-                <serviceList>
-                        <service>
-                                <serviceType>(null)</serviceType>
-                                <serviceId>(null)</serviceId>
-                                <controlURL>(null)</controlURL>
-                                <eventSubURL>(null)</eventSubURL>
-                                <SCPDURL>(null)</SCPDURL>
-                        </service>
-                </serviceList>
                 <presentationURL>index.html</presentationURL>
                 <iconList>
                         <icon>
@@ -116,7 +111,7 @@ Connection: Keep-Alive
                 </iconList>
         </device>
 </root>
-""".format(IP, HTTP_PORT, IP, SERIALNO, SERIALNO).replace("\n", "\r\n")
+""".format(IP, HTTP_PORT, IP, HTTP_PORT, IP, SERIALNO, SERIALNO).replace("\n", "\r\n")
 
 NEWDEVELOPER_JSON = """
 {{"lights":{{"1":{{"state":{{"on":true,"bri":254,"hue":4444,"sat":254,"xy":[0.0,0.0],"ct":0,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"2":{{"state":{{"on":true,"bri":254,"hue":23536,"sat":144,"xy":[0.0,0.0],"ct":201,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"3":{{"state":{{"on":true,"bri":254,"hue":65136,"sat":254,"xy":[0.0,0.0],"ct":201,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}}}},"schedules":{{"1":{{"time":"2012-10-29T12:00:00","description":"","name":"schedule","command":{{"body":{{"on":true,"xy":null,"bri":null,"transitiontime":null}},"address":"/api/newdeveloper/groups/0/action","method":"PUT"}}}}}},"config":{{"portalservices":false,"gateway":"{}","mac":"{}","swversion":"01005215","linkbutton":false,"ipaddress":"{}:{}","proxyport":0,"swupdate":{{"text":"","notify":false,"updatestate":0,"url":""}},"netmask":"255.255.255.0","name":"Philips hue","dhcp":true,"proxyaddress":"","whitelist":{{"newdeveloper":{{"name":"test user","last use date":"2015-02-04T21:35:18","create date":"2012-10-29T12:00:00"}}}},"UTC":"2012-10-29T12:05:00"}},"groups":{{"1":{{"name":"Group 1","action":{{"on":true,"bri":254,"hue":33536,"sat":144,"xy":[0.346,0.3568],"ct":201,"alert":null,"effect":"none","colormode":"xy","reachable":null}},"lights":["1","2"]}}}},"scenes":{{}}}}
@@ -209,6 +204,7 @@ class Responder(Thread):
                                         sock.close()
                                         return
                         else:
+                                #L.debug("\n-> debug received from {}\n{}\n<-\n".format(addr,data.strip()))
                                 if M_SEARCH_REQ_MATCH in data:
                                         L.info("received M-SEARCH from {}".format(addr))
                                         L.debug(" data:\n{}".format(data.strip()))
