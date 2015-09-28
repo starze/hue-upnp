@@ -44,8 +44,15 @@ case "$1" in
     echo "Stopping hueUpnp"
     /usr/bin/pkill -f "hueUpnp.py"
     ;;
+  restart)
+    echo "Stopping hueUpnp"
+    /usr/bin/pkill -f "hueUpnp.py"
+    echo "Starting hueUpnp"
+    cd  $HUEUPNPDIR
+    python hueUpnp.py > /var/log/hueUpnp.log 2>&1 &
+    ;;
   *)
-    echo "Usage: /etc/init.d/hueUpnp {start|stop}"
+    echo "Usage: /etc/init.d/hueUpnp {start|stop|restart}"
     exit 1
     ;;
 esac
