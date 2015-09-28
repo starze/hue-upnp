@@ -306,8 +306,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                         self.request.sendall(ICON_BIG.decode('base64'))
 
                 #Request for all lights
-                elif "/api/lights " in data:
-                        #time.sleep(1)  #I don't think we need to have a delay
+                elif re.match( r'GET /api/.*lights ', data, re.I):
                         self.request.sendall(JSON_HEADERS)
                         self.request.sendall(LIGHTSRESP_TEMPLATE_JSON.format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME, HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME, HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME))
                         L.debug("Sent HTTP All Lights Response: {}-{}-{}-{}-{} |  {}-{}-{}-{}-{} | {}-{}-{}-{}-{}".format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME, HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME, HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME))
@@ -315,73 +314,73 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                 #PUT instruction to do something
                 #Example (hue3-light-off):
                 #PUT /api/lights/3/state HTTP/1.1
+                #or PUT /api/{uniqueID}/lights/3/state HTTP/1.1
                 #{"on":false}            resp: [{"success":{"/lights/3/state/on":false}}]
                 # or (change color)
                 #{"xy":[0.4617,0.4579]}  resp: [{"success":{"/lights/3/state/xy":[0.4617,0.4579]}}]
                 # or (multiple commands (on and bri) (only handle first item for now)
                 #{"on":true,"bri":254}   resp: [{"success":{"/lights/2/state/on":true}}]
-                elif "PUT /api/lights" in data:
-                        L.debug("Got PUT request to do something")
-                        #time.sleep(1) #let's not add a delay
-                        reqHueNo = "1"
-                        reqCmd = "on"
-                        reqValue = "true"
-                        matchObj = re.match( r'PUT /api/lights/(\d+)/state', data, re.I)
-                        if matchObj: reqHueNo = matchObj.group(1)
-                        #note: only handling first element if multiple (for now)
-                        searchObj = re.search( r'\{"(.*?)":(.*?)[,\}]', data, re.I)
-                        if searchObj:
-                                reqCmd = searchObj.group(1)
-                                reqValue = searchObj.group(2)
-                        L.debug("PUT Request: {} |-| {} |-| {}".format(reqHueNo, reqCmd, reqValue))
-
-                        #Update Global Hue States
-                        if reqHueNo == "1":
-                                if reqCmd == "on":
-                                        HUE1ON = reqValue
-                                elif reqCmd == "xy":
-                                        HUE1XY = reqValue
-                                elif reqCmd == "bri":
-                                        HUE1BRI = reqValue
-                                elif reqCmd == "ct":
-                                        HUE1CT = reqValue
-                        elif reqHueNo == "2":
-                                if reqCmd == "on":
-                                        HUE2ON = reqValue
-                                elif reqCmd == "xy":
-                                        HUE2XY = reqValue
-                                elif reqCmd == "bri":
-                                        HUE2BRI = reqValue
-                                elif reqCmd == "ct":
-                                        HUE2CT = reqValue
-                        elif reqHueNo == "3":
-                                if reqCmd == "on":
-                                        HUE3ON = reqValue
-                                elif reqCmd == "xy":
-                                        HUE3XY = reqValue
-                                elif reqCmd == "bri":
-                                        HUE3BRI = reqValue
-                                elif reqCmd == "ct":
-                                        HUE3CT = reqValue
-
-                        #Use external program to do "stuff" if desired
-                        subprocess.Popen([EXTERNALPROG, reqHueNo, reqCmd, reqValue])
-
-                        self.request.sendall(JSON_HEADERS)
-                        self.request.sendall(PUTRESP_TEMPLATE_JSON.format(reqHueNo,reqCmd,reqValue))
-                        L.debug("Sent HTTP Put Response: {}".format(PUTRESP_TEMPLATE_JSON.format(reqHueNo,reqCmd,reqValue)))
-
-                #All other PUT /api/ send back a blank response
                 elif "PUT /api/" in data:
-                        #time.sleep(1)  #I don't think we need to have a delay
-                        self.request.sendall(JSON_HEADERS)
-                        L.debug("Sent blank JSON response")
+                        matchObj = re.match( r'PUT /api/.*lights/(\d+)/state', data, re.I)
+                        #if "/lights/" in data and "/state" in data:
+                        if matchObj:
+                                L.debug("Got PUT request to do something")
+                                reqHueNo =  matchObj.group(1)
+                                reqCmd = "on"
+                                reqValue = "true"
+                                #note: only handling first element if multiple (for now)
+                                searchObj = re.search( r'\{"(.*?)":(.*?)[,\}]', data, re.I)
+                                if searchObj:
+                                        reqCmd = searchObj.group(1)
+                                        reqValue = searchObj.group(2)
+                                L.debug("PUT Request: {} |-| {} |-| {}".format(reqHueNo, reqCmd, reqValue))
+
+                                #Update Global Hue States
+                                if reqHueNo == "1":
+                                        if reqCmd == "on":
+                                                HUE1ON = reqValue
+                                        elif reqCmd == "xy":
+                                                HUE1XY = reqValue
+                                        elif reqCmd == "bri":
+                                                HUE1BRI = reqValue
+                                        elif reqCmd == "ct":
+                                                HUE1CT = reqValue
+                                elif reqHueNo == "2":
+                                        if reqCmd == "on":
+                                                HUE2ON = reqValue
+                                        elif reqCmd == "xy":
+                                                HUE2XY = reqValue
+                                        elif reqCmd == "bri":
+                                                HUE2BRI = reqValue
+                                        elif reqCmd == "ct":
+                                                HUE2CT = reqValue
+                                elif reqHueNo == "3":
+                                        if reqCmd == "on":
+                                                HUE3ON = reqValue
+                                        elif reqCmd == "xy":
+                                                HUE3XY = reqValue
+                                        elif reqCmd == "bri":
+                                                HUE3BRI = reqValue
+                                        elif reqCmd == "ct":
+                                                HUE3CT = reqValue
+
+                                #Use external program to do "stuff" if desired
+                                subprocess.Popen([EXTERNALPROG, reqHueNo, reqCmd, reqValue])
+
+                                self.request.sendall(JSON_HEADERS)
+                                self.request.sendall(PUTRESP_TEMPLATE_JSON.format(reqHueNo,reqCmd,reqValue))
+                                L.debug("Sent HTTP Put Response: {}".format(PUTRESP_TEMPLATE_JSON.format(reqHueNo,reqCmd,reqValue)))
+
+                        #All other PUT /api/ send back a blank response
+                        else:
+                                #time.sleep(1)  #I don't think we need to have a delay
+                                self.request.sendall(JSON_HEADERS)
+                                L.debug("Sent blank JSON response")
 
                 #Requesting the state of just one light
-                elif "/api/lights/" in data:
-                        #time.sleep(1)  #I don't think we need to have a delay
+                elif re.match( r'GET /api/.*lights/(\d+) ', data, re.I):
                         reqHueNo = "1"
-                        matchObj = re.match( r'GET /api/lights/(\d+) ', data, re.I)
+                        matchObj = re.match( r'GET /api/.*lights/(\d+) ', data, re.I)
                         if matchObj: reqHueNo = matchObj.group(1)
                         OneResp = ONELIGHTRESP_TEMPLATE_JSON.format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME)
                         if reqHueNo == "2":
