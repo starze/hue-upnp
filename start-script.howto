@@ -10,9 +10,15 @@
 # e.g.
 # sudo copy hueUpnp.howto /etc/init.d/hueUpnp
 # sudo chmod 755 /etc/init.d/hueUpnp
+# sudo update-rc.d hueUpnp defaults    #ubuntu command
+#
+# or if you prefer services:
 # sudo insserv hueUpnp    #ubuntu command
+# sudo /usr/lib/insserv/insserv hueUpnp  #run this instead if command not found
 #
 # To start manually:
+# sudo /etc/init.d/hueUpnp start
+# or
 # sudo service hueUpnp start
 #
 # Log file: /var/log/hueUpnp.log
