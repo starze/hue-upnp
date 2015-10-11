@@ -1,3 +1,4 @@
+
 import socket, struct, time, SocketServer, re, subprocess, sys, logging, logging.handlers, thread
 from threading import Thread
 
@@ -285,7 +286,8 @@ class Httpd(Thread):
 class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
         def handle(self):
                 global HUE1ON, HUE1XY, HUE1BRI, HUE1CT, HUE2ON, HUE2XY, HUE2BRI, HUE2CT, HUE3ON, HUE3XY, HUE3BRI, HUE3CT
-                L.info("http request from {}".format(self.client_address[0]))
+                client = self.client_address[0]
+                L.info("{}: http request".format(client))
                 data = self.request.recv(1024)
 
                 #all data isnt always sent right away--try a couple more times
@@ -301,12 +303,12 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                 if searchObj and int(searchObj.group(1)) > 0:
                         #got the header--now grab the remaining content if any
                         data += self.request.recv(int(searchObj.group(1)))
-                L.debug("HTTP Request: {}".format(data.strip()))
+                L.debug("{} HTTP Request: {}".format(client,data.strip()))
 
                 if "description.xml" in data:
                         #time.sleep(1)  #I don't think we need to have a delay
                         self.request.sendall(DESCRIPTION_XML)
-                        L.info("Sent HTTP description.xml Response")
+                        L.info("{} Sent HTTP description.xml Response".format(client))
 
                 elif "hue_logo_0.png" in data:
                         self.request.sendall(ICON_HEADERS)
@@ -316,27 +318,28 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                         self.request.sendall(ICON_BIG.decode('base64'))
 
                 #Request for all lights
-                elif "/api/lights " in data:
-                        #time.sleep(1)  #I don't think we need to have a delay
+                elif re.match( r'GET /api/.*lights ', data, re.I):
                         self.request.sendall(JSON_HEADERS)
                         self.request.sendall(LIGHTSRESP_TEMPLATE_JSON.format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME, HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME, HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME))
-                        L.debug("Sent HTTP All Lights Response: {}-{}-{}-{}-{} |  {}-{}-{}-{}-{} | {}-{}-{}-{}-{}".format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME, HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME, HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME))
+                        L.debug("{} Sent HTTP All Lights Response: {}-{}-{}-{}-{} |  {}-{}-{}-{}-{} | {}-{}-{}-{}-{}".format(client, HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME, HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME, HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME))
 
-                # PUT instruction to do something
+                #PUT instruction to do something
+                #Example (hue3-light-off):
+                #PUT /api/lights/3/state HTTP/1.1
+                #or PUT /api/{uniqueID}/lights/3/state HTTP/1.1
+                #{"on":false}            resp: [{"success":{"/lights/3/state/on":false}}]
+                # or (change color)
+                #{"xy":[0.4617,0.4579]}  resp: [{"success":{"/lights/3/state/xy":[0.4617,0.4579]}}]
+                # or (multiple commands (on and bri) (only handle first item for now)
+                #{"on":true,"bri":254}   resp: [{"success":{"/lights/2/state/on":true}}]
                 elif "PUT /api/" in data:
-                        #Example (hue3-light-off):
-                        #PUT /api/lights/3/state HTTP/1.1
-                        #{"on":false}            resp: [{"success":{"/lights/3/state/on":false}}]
-                        # or (change color)
-                        #{"xy":[0.4617,0.4579]}  resp: [{"success":{"/lights/3/state/xy":[0.4617,0.4579]}}]
-                        # or (multiple commands (on and bri) (only handle first item for now)
-                        #{"on":true,"bri":254}   resp: [{"success":{"/lights/2/state/on":true}}]
-                        matchObj = re.match( r'PUT /api/lights/(\d+)/state', data, re.I)
+                        matchObj = re.match( r'PUT /api/(.*)lights/(\d+)/state', data, re.I)
+                        #if "/lights/" in data and "/state" in data:
                         if matchObj:
-                                reqHueNo = matchObj.group(1)
-                                L.debug("Got PUT request to do something")
-                                #time.sleep(1) #let's not add a delay
-                                reqHueNo = "1"
+                                L.debug("{} Got PUT request to do something".format(client))
+                                # reqId is what Alexa passes, the mach will include the trailing / for now.
+                                reqId    =  matchObj.group(1)
+                                reqHueNo =  matchObj.group(2)
                                 reqCmd = "on"
                                 reqValue = "true"
                                 #note: only handling first element if multiple (for now)
@@ -344,7 +347,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                 if searchObj:
                                         reqCmd = searchObj.group(1)
                                         reqValue = searchObj.group(2)
-                                L.debug("PUT Request: {} |-| {} |-| {}".format(reqHueNo, reqCmd, reqValue))
+                                L.debug("{} PUT Request: {} |-| {} |-| {}".format(client, reqHueNo, reqCmd, reqValue))
 
                                 #Update Global Hue States
                                 if reqHueNo == "1":
@@ -374,23 +377,26 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                                 HUE3BRI = reqValue
                                         elif reqCmd == "ct":
                                                 HUE3CT = reqValue
-                                                
+
                                 #Use external program to do "stuff" if desired
                                 subprocess.Popen([EXTERNALPROG, reqHueNo, reqCmd, reqValue])
 
+                                # TODO: true should be false when turning off?
+                                resp = PUTRESP_TEMPLATE_JSON.format(reqHueNo,reqCmd,reqValue);
                                 self.request.sendall(JSON_HEADERS)
-                                self.request.sendall(PUTRESP_TEMPLATE_JSON.format(reqHueNo,reqCmd,reqValue))
-                                L.debug("Sent HTTP Put Response: {}".format(PUTRESP_TEMPLATE_JSON.format(reqHueNo,reqCmd,reqValue)))
+                                self.request.sendall(resp)
+                                L.debug("{} Sent HTTP Put Response: {}".format(client,resp))
+
+                        #All other PUT /api/ send back a blank response
                         else:
-                                # All other PUT /api/ send back a blank response
+                                #time.sleep(1)  #I don't think we need to have a delay
                                 self.request.sendall(JSON_HEADERS)
-                                L.debug("Sent blank JSON response")
+                                L.debug("{} Sent blank JSON response".format(client))
 
                 #Requesting the state of just one light
-                elif "/api/lights/" in data:
-                        #time.sleep(1)  #I don't think we need to have a delay
+                elif re.match( r'GET /api/.*lights/(\d+) ', data, re.I):
                         reqHueNo = "1"
-                        matchObj = re.match( r'GET /api/lights/(\d+) ', data, re.I)
+                        matchObj = re.match( r'GET /api/.*lights/(\d+) ', data, re.I)
                         if matchObj: reqHueNo = matchObj.group(1)
                         OneResp = ONELIGHTRESP_TEMPLATE_JSON.format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME)
                         if reqHueNo == "2":
@@ -399,31 +405,31 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                 OneResp = ONELIGHTRESP_TEMPLATE_JSON.format(HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME)
                         self.request.sendall(JSON_HEADERS)
                         self.request.sendall(OneResp)
-                        L.debug("Sent HTTP Individual Light Response: {}".format(OneResp))
+                        L.debug("{} Sent HTTP Individual Light Response: {}".format(client,OneResp))
 
                 #Assuming this is a new device registration or config request
                 elif "GET /api/" in data:
                         if "/config" in data:
-                                L.info("Got request for /config")
+                                L.info("{} Got request for /config".format(client))
                                 self.request.sendall(JSON_HEADERS)
                                 self.request.sendall(APICONFIG_JSON)
-                                L.info("Sent API Config")
+                                L.info("{} Sent API Config".format(client))
                         else:
                                 newDev = "newdeveloper"
                                 matchObj = re.match( r'GET /api/(.+) ', data, re.I)
                                 if matchObj: newDev = matchObj.group(1)
-                                L.info("Got request for new dev: {}".format(newDev))
+                                L.info("{} Got request for new dev: {}".format(client,newDev))
                                 #time.sleep(1)  #I don't think we need to have a delay
                                 self.request.sendall(JSON_HEADERS)
                                 self.request.sendall(NEWDEVELOPER_JSON)
-                                L.info("Sent HTTP New Dev Response")
+                                L.info("{} Sent HTTP New Dev Response".format(client))
 
                 #I only saw a POST when registering the username
                 elif "POST /api/" in data:
                         #time.sleep(1)  #I don't think we need to have a delay
                         self.request.sendall(JSON_HEADERS)
                         self.request.sendall(NEWDEVELOPERSYNC_JSON)
-                        L.info("Sent HTTP New Dev Sync Response")
+                        L.info("{} Sent HTTP New Dev Sync Response".format(client))
 
                 else:
                         self.request.sendall("HTTP/1.1 404 Not Found")
