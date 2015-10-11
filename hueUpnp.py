@@ -1,5 +1,5 @@
 
-import socket, struct, time, SocketServer, re, subprocess, sys, logging, logging.handlers, thread
+import socket, struct, email.utils, time, SocketServer, re, subprocess, sys, logging, logging.handlers, thread
 from threading import Thread
 
 #config
@@ -162,17 +162,14 @@ PUTRESP_TEMPLATE_JSON = """
 """.replace("\n", "\r\n")
 
 JSON_HEADERS = """HTTP/1.1 200 OK
-Access-control-allow-headers: Content-Type
-Connection: close
-Pragma: no-cache
-Access-control-max-age: 0
-Access-control-allow-methods: POST, GET, OPTIONS, PUT, DELETE
-Content-type: application/json; charset=utf-8
-Access-control-allow-origin: *
-Access-control-allow-credentials: true
-Expires: Mon, 1 Aug 2011 09:00:00 GMT
-Cache-control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0
-""".replace("\n", "\r\n")
+CONTENT-LENGTH: %d
+CONTENT-TYPE: text/xml charset=utf-8"
+DATE: %s
+EXT:
+SERVER: Unspecified, UPnP/1.0, Unspecified
+CONNECTION: close
+
+%s""".replace("\n", "\r\n")
 
 
 ICON_HEADERS = """HTTP/1.1 200 OK
@@ -287,8 +284,9 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
         def handle(self):
                 global HUE1ON, HUE1XY, HUE1BRI, HUE1CT, HUE2ON, HUE2XY, HUE2BRI, HUE2CT, HUE3ON, HUE3XY, HUE3BRI, HUE3CT
                 client = self.client_address[0]
-                L.info("{}: http request".format(client))
+                L.info("{}: reading http request".format(client))
                 data = self.request.recv(1024)
+                L.debug("{} HTTP Request 1: {}".format(client,data.strip()))
 
                 #all data isnt always sent right away--try a couple more times
                 #2015-08: Logitech change the data flow slightly.  We seem to need to
@@ -297,13 +295,15 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                 # content-length is found and greater than 0
                 if "\r\n\r\n" not in data:
                         data += self.request.recv(1024) #try one more time
+                        L.debug("{} HTTP Request 2: {}".format(client,data.strip()))
                 if "\r\n\r\n" not in data:
                         data += self.request.recv(1024) #try one more time then give up
+                        L.debug("{} HTTP Request 3: {}".format(client,data.strip()))
                 searchObj = re.search( r'content-length: (\d+)', data, re.I)
                 if searchObj and int(searchObj.group(1)) > 0:
                         #got the header--now grab the remaining content if any
                         data += self.request.recv(int(searchObj.group(1)))
-                L.debug("{} HTTP Request: {}".format(client,data.strip()))
+                L.debug("{} HTTP Request Full: {}".format(client,data.strip()))
 
                 if "description.xml" in data:
                         #time.sleep(1)  #I don't think we need to have a delay
@@ -319,9 +319,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
 
                 #Request for all lights
                 elif re.match( r'GET /api/.*lights ', data, re.I):
-                        self.request.sendall(JSON_HEADERS)
-                        self.request.sendall(LIGHTSRESP_TEMPLATE_JSON.format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME, HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME, HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME))
-                        L.debug("{} Sent HTTP All Lights Response: {}-{}-{}-{}-{} |  {}-{}-{}-{}-{} | {}-{}-{}-{}-{}".format(client, HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME, HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME, HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME))
+                        self.send_json(LIGHTSRESP_TEMPLATE_JSON.format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME, HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME, HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME))
 
                 #PUT instruction to do something
                 #Example (hue3-light-off):
@@ -379,19 +377,16 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                                 HUE3CT = reqValue
 
                                 #Use external program to do "stuff" if desired
-                                subprocess.Popen([EXTERNALPROG, reqHueNo, reqCmd, reqValue])
+                                #subprocess.Popen([EXTERNALPROG, reqHueNo, reqCmd, reqValue])
 
                                 # TODO: true should be false when turning off?
                                 resp = PUTRESP_TEMPLATE_JSON.format(reqHueNo,reqCmd,reqValue);
-                                self.request.sendall(JSON_HEADERS)
-                                self.request.sendall(resp)
-                                L.debug("{} Sent HTTP Put Response: {}".format(client,resp))
+                                self.send_json(resp)
 
                         #All other PUT /api/ send back a blank response
                         else:
                                 #time.sleep(1)  #I don't think we need to have a delay
-                                self.request.sendall(JSON_HEADERS)
-                                L.debug("{} Sent blank JSON response".format(client))
+                                self.request.send_json("")
 
                 #Requesting the state of just one light
                 elif re.match( r'GET /api/.*lights/(\d+) ', data, re.I):
@@ -403,32 +398,27 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                 OneResp = ONELIGHTRESP_TEMPLATE_JSON.format(HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME)
                         elif reqHueNo == "3":
                                 OneResp = ONELIGHTRESP_TEMPLATE_JSON.format(HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME)
-                        self.request.sendall(JSON_HEADERS)
-                        self.request.sendall(OneResp)
+                        self.send_json(OneResp)
                         L.debug("{} Sent HTTP Individual Light Response: {}".format(client,OneResp))
 
                 #Assuming this is a new device registration or config request
                 elif "GET /api/" in data:
                         if "/config" in data:
                                 L.info("{} Got request for /config".format(client))
-                                self.request.sendall(JSON_HEADERS)
-                                self.request.sendall(APICONFIG_JSON)
+                                self.send_json(APICONFIG_JSON)
                                 L.info("{} Sent API Config".format(client))
                         else:
                                 newDev = "newdeveloper"
                                 matchObj = re.match( r'GET /api/(.+) ', data, re.I)
                                 if matchObj: newDev = matchObj.group(1)
                                 L.info("{} Got request for new dev: {}".format(client,newDev))
-                                #time.sleep(1)  #I don't think we need to have a delay
-                                self.request.sendall(JSON_HEADERS)
-                                self.request.sendall(NEWDEVELOPER_JSON)
+                                self.send_json(NEWDEVELOPER_JSON)
                                 L.info("{} Sent HTTP New Dev Response".format(client))
 
                 #I only saw a POST when registering the username
                 elif "POST /api/" in data:
                         #time.sleep(1)  #I don't think we need to have a delay
-                        self.request.sendall(JSON_HEADERS)
-                        self.request.sendall(NEWDEVELOPERSYNC_JSON)
+                        self.send_json(NEWDEVELOPERSYNC_JSON)
                         L.info("{} Sent HTTP New Dev Sync Response".format(client))
 
                 else:
@@ -436,6 +426,12 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
 
                 L.debug("-------------------------------")
                 L.debug("    ")
+
+        def send_json(self,resp):
+                date_str = email.utils.formatdate(timeval=None, localtime=False, usegmt=True)
+                full_resp = (JSON_HEADERS % (len(resp), date_str, resp))
+                self.request.sendall(full_resp)
+                L.debug("{} Sent HTTP Put Response:\n{}".format(self.client_address[0],full_resp))
 
 if __name__ == '__main__':
         responder = Responder()
