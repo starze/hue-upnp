@@ -291,12 +291,12 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                         data += self.request.recv(1024) #try one more time then give up
                 searchObj = re.search( r'content-length: (\d+)', data, re.I)
                 if searchObj and int(searchObj.group(1)) > 0:
-                        contentlength = int(searchObj.group(1))
-                        headerlength = data.find("\r\n\r\n") + 4
-                        L.debug("Header-Length={} Content-Length={}".format(headerlength,contentlength))
+                        contentLength = int(searchObj.group(1))
+                        headerLength = data.find("\r\n\r\n") + 4
+                        L.debug("Header-Length={} Content-Length={}".format(headerLength,contentLength))
                         #got the header--now grab the remaining content if any
-                        if len(data) < headerlength + contentlength:
-                                data += self.request.recv(headerlength + contentlength - len(data))
+                        if len(data) < headerLength + contentLength:
+                                data += self.request.recv(headerLength + contentLength - len(data))
                 L.debug("HTTP Request: {}".format(data.strip()))
 
                 if "description.xml" in data:
