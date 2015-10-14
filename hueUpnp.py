@@ -283,14 +283,20 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                 # return the payload for "GET /api/lights" sooner.  The 1 sec sleeps
                 # have been removed and we only do another "request.recv" if the
                 # content-length is found and greater than 0
+                #2015-10: Header size is now computed to determine exactly how much
+                # data still needs to be pulled
                 if "\r\n\r\n" not in data:
                         data += self.request.recv(1024) #try one more time
                 if "\r\n\r\n" not in data:
                         data += self.request.recv(1024) #try one more time then give up
                 searchObj = re.search( r'content-length: (\d+)', data, re.I)
                 if searchObj and int(searchObj.group(1)) > 0:
+                        contentlength = int(searchObj.group(1))
+                        headerlength = data.find("\r\n\r\n") + 4
+                        L.debug("Header-Length={} Content-Length={}".format(headerlength,contentlength))
                         #got the header--now grab the remaining content if any
-                        data += self.request.recv(int(searchObj.group(1)))
+                        if len(data) < headerlength + contentlength:
+                                data += self.request.recv(headerlength + contentlength - len(data))
                 L.debug("HTTP Request: {}".format(data.strip()))
 
                 if "description.xml" in data:
@@ -438,4 +444,3 @@ if __name__ == '__main__':
         responder.stop()
         broadcaster.stop()
         httpd.stop()
-
