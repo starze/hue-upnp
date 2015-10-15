@@ -515,8 +515,8 @@ if __name__ == '__main__':
 
         # If using the ISY calls, set your info here:
         ISY_IP       = '192.168.1.64'
-        ISY_USERNAME = 'admin'
-        ISY_PASSWORD = 'diabl099'
+        ISY_USERNAME = 'notmyuser'
+        ISY_PASSWORD = 'notmypassword'
 
         #  [ 'Name', on, XY, BRI, CT ]
         DEVICES = [
