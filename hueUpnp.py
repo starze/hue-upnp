@@ -14,9 +14,6 @@ UPNP_PORT = 1900
 BROADCAST_INTERVAL = 200 # Seconds between upnp broadcast
 IP = "192.168.1.77" # Callback http webserver IP (this machine)
 HTTP_PORT = 80 # HTTP-port to serve icons, xml, json (80 is most compatible but requires root)
-#external script to easily call other activities (e.g. wol, wemo-switch, etc)
-#EXTERNALPROG = "./hue-upnp-helper.sh"
-EXTERNALPROG = "/bin/true"
 GATEWAYIP = "192.168.1.1" # shouldn't matter but feel free to adjust
 MACADDRESS = "b8:27:eb:06:9d:18" # shouldn't matter but feel free to adjust
 SERIALNO = re.sub(':','',MACADDRESS) # same as the MACADDRESS with colons removed
@@ -113,10 +110,6 @@ Connection: Keep-Alive
 APICONFIG_JSON = """
 [{"swversion":"01008227","apiversion":"1.2.1","name":"Smartbridge 1","mac":"%s",}]
 """ % (MACADDRESS)
-
-#example template values: "on", "[0.0,0.0]", "Hue Lamp 1", "254", "201"
-# on, bri, xy, ct, name
-ONELIGHTRESP_TEMPLATE_JSON = """{"state":{"on":%s,"bri":%s,"hue":4444,"sat":254,"xy":%s,"ct":%s,"alert":"none","effect":"none","colormode":"hs","reachable":true},"type":"Extended color light","name":"%s","modelid":"LCT001","swversion":"65003148","pointsymbol":{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}"""
 
 NEWDEVELOPERSYNC_JSON = """
 [{"success":{"%s":""}}]
@@ -271,7 +264,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                         #got the header--now grab the remaining content if any
                         if len(data) < headerLength + contentLength:
                                 data += self.request.recv(headerLength + contentLength - len(data))
-                L.debug("HTTP Request: {}".format(data.strip()))
+                L.debug("{}: HTTP Request: {}".format(client,data.strip()))
 
                 if "description.xml" in data:
                         self.request.sendall(DESCRIPTION_XML)
@@ -289,9 +282,9 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                         resp = "\n{"
                         i = 1
                         for device in DEVICES:
-                                # TODO: Force update of device? dst = device[1].st()
+                                # TODO: Force update of device? dst = device.st()
                                 resp += "\"%d\":" % (i)
-                                resp += ONELIGHTRESP_TEMPLATE_JSON % (device[1].on, device[1].bri, device[1].xy, device[1].ct, device[0])
+                                resp += self.get_onelight_json(device)
                                 if i < len(DEVICES):
                                         resp += ","
                                 i += 1
@@ -320,36 +313,26 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                 #note: only handling first element if multiple (for now)
                                 # Harmony: {"on":true,"bri":254}
                                 # Echo: {"on": true}
+                                # TODO: Parse the json to get all the info and pass to the device.set()
                                 searchObj = re.search( r'\{"(.*?)":\s*(.*?)[,\}]', data, re.I)
+                                L.debug("%s PUT Request: '%s' '%s' '%s'" % (client, reqHueNo, reqCmd, reqValue))
                                 if searchObj:
                                         reqCmd = searchObj.group(1)
                                         reqValue = searchObj.group(2)
-                                # 2015-10-12 21:23:20,411 [DEBUG] 192.168.1.74 PUT Request: 1 |-| on |-|  true
-                                L.debug("%s PUT Request: '%s' '%s' '%s'" % (client, reqHueNo, reqCmd, reqValue))
+                                        # 2015-10-12 21:23:20,411 [DEBUG] 192.168.1.74 PUT Request: 1 |-| on |-|  true
 
-                                # Update Global Hue States
+                                # Update the device.
+                                # TODO: Check for valid device number
                                 device_num = int(reqHueNo) - 1
-                                
-                                if reqCmd == "on":
-                                        if reqValue == "true":
-                                                DEVICES[device_num][1].set_on()
-                                        else:
-                                                DEVICES[device_num][1].set_off()
-                                elif reqCmd == "xy":
-                                        DEVICES[device_num][1].set_xy(reqValue)
-                                elif reqCmd == "bri":
-                                        DEVICES[device_num][1].set_bri(reqValue)
-                                elif reqCmd == "ct":
-                                        DEVICES[device_num][1].set_ct(reqValue)
+                                st = DEVICES[device_num].set(reqCmd,reqValue)
 
-                                # TODO: true should be false when turning off?
+                                # TODO: Return success false if not st?
                                 resp = PUTRESP_TEMPLATE_JSON % (reqHueNo,reqCmd,reqValue);
                                 self.send_json(resp)
 
                         #All other PUT /api/ send back a blank response
                         else:
-                                #time.sleep(1)  #I don't think we need to have a delay
-                                self.request.send_json("")
+                                self.send_json("")
 
                 #Requesting the state of just one light
                 elif re.match( r'GET /api/.*lights/(\d+) ', data, re.I):
@@ -358,8 +341,8 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                         if matchObj: reqHueNo = matchObj.group(1)
                         device_num = int(reqHueNo) - 1
                         device = DEVICES[device_num]
-                        # TODO: Force update of device? dst = device[1].st()
-                        OneResp = ONELIGHTRESP_TEMPLATE_JSON % (device[1].on, device[1].bri, device[1].xy, device[1].ct, device[0])
+                        # TODO: Force update of device? dst = device.st()
+                        OneResp = self.get_onelight_json(device)
                         self.send_json(OneResp)
 
                 #Assuming this is a new device registration or config request
@@ -378,14 +361,13 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                 device_json = ()
                                 for device in DEVICES:
                                         json += """"%d":""" % (i)
-                                        #dst = device[1].st()
-                                        json += ONELIGHTRESP_TEMPLATE_JSON % (device[1].on, device[1].bri, device[1].xy, device[1].ct, device[0])
+                                        #dst = device.st()
+                                        json += self.get_onelight_json(device)
                                         if i < len(DEVICES):
                                                 json += ","
                                         i += 1
 
-                                json += """},"schedules":{"1":{"time":"2012-10-29T12:00:00","description":"","name":"schedule","command":{"body":{"on":true,"xy":null,"bri":null,"transitiontime":null},"address":"/api/newdeveloper/groups/0/action","method":"PUT"}},"config":{"portalservices":false,"gateway":"%s","mac":"%s","swversion":"01005215","linkbutton":false,"ipaddress":"%s:%s","proxyport":0,"swupdate":{"text":"","notify":false,"updatestate":0,"url":""}},"netmask":"255.255.255.0","name":"Philips hue","dhcp":true,"proxyaddress":"","whitelist":{"newdeveloper":{"name":"test user","last use date":"2015-02-04T21:35:18","create date":"2012-10-29T12:00:00"}},"UTC":"2012-10-29T12:05:00"},"groups":{"1":{"name":"Group 1","action":{"on":true,"bri":254,"hue":33536,"sat":144,"xy":[0.346,0.3568],"ct":201,"alert":null,"effect":"none","colormode":"xy","reachable":null}},"lights":["1","2"]}},"scenes":{}
-""" % (GATEWAYIP, MACADDRESS, IP, HTTP_PORT)
+                                json += """},"schedules":{"1":{"time":"2012-10-29T12:00:00","description":"","name":"schedule","command":{"body":{"on":true,"xy":null,"bri":null,"transitiontime":null},"address":"/api/newdeveloper/groups/0/action","method":"PUT"}}},"config":{"portalservices":false,"gateway":"%s","mac":"%s","swversion":"01005215","linkbutton":false,"ipaddress":"%s:%s","proxyport":0,"swupdate":{"text":"","notify":false,"updatestate":0,"url":""},"netmask":"255.255.255.0","name":"Philips hue","dhcp":true,"proxyaddress":"","whitelist":{"newdeveloper":{"name":"test user","last use date":"2015-02-04T21:35:18","create date":"2012-10-29T12:00:00"}},"UTC":"2012-10-29T12:05:00"},"groups":{"1":{"name":"Group 1","action":{"on":true,"bri":254,"hue":33536,"sat":144,"xy":[0.346,0.3568],"ct":201,"alert":null,"effect":"none","colormode":"xy","reachable":null},"lights":["1","2"]}},"scenes":{}}\n""" % (GATEWAYIP, MACADDRESS, IP, HTTP_PORT)
                                 self.send_json(json)
                                 L.info("{} Sent HTTP New Dev Response".format(client))
 
@@ -401,48 +383,92 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                 L.debug("-------------------------------")
                 L.debug("    ")
 
+        def get_onelight_json(self,device):
+                #example template values: "on", "[0.0,0.0]", "Hue Lamp 1", "254", "201"
+                # on, bri, xy, ct, name
+                json = """{"state":{"on":%s,"bri":%s,"hue":4444,"sat":254,"xy":%s,"ct":%s,"alert":"none","effect":"none","colormode":"hs","reachable":true},"type":"Extended color light","name":"%s","modelid":"LCT001","swversion":"65003148","pointsymbol":{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}"""
+                return json % (device.on, device.bri, device.xy, device.ct, device.name)
+
         def send_json(self,resp):
                 date_str = email.utils.formatdate(timeval=None, localtime=False, usegmt=True)
                 full_resp = (JSON_HEADERS % (len(resp), date_str, resp)).replace("\n", "\r\n")
                 self.request.sendall(full_resp)
                 L.debug("{} Sent HTTP Put Response:\n{}".format(self.client_address[0],full_resp))
 
-#Use external program to do "stuff" if desired
-#subprocess.Popen([EXTERNALPROG, reqHueNo, reqCmd, reqValue])
-        
+class hue_upnp_helper_handler(object):
+        def __init__(self, name):
+                #external script to easily call other activities (e.g. wol, wemo-switch, etc)
+                #EXTERNALPROG = "./hue-upnp-helper.sh"
+                self.program = "echo"
+                self.name    = name
+                # TODO: Call get_st to set initial status.
+                self.on  = "true"
+                self.bri = 254
+                self.xy  = [0.0,0.0];
+                self.ct  = 201
+
+        def set(self,cmd,value):
+                #Use external program to do "stuff" if desired
+                ret = subprocess.Popen([self.program, self.name, cmd, value])
+                if cmd == "on":
+                        self.on = value
+                elif cmd == "xy":
+                        self.xy = value
+                elif cmd == "bri":
+                        self.bri = value
+                elif cmd == "ct":
+                        self.ct = value
+                return ret
+                
 class isy_rest_handler(object):
-        def __init__(self, address):
+        def __init__(self, name, address):
+                self.name    = name
                 self.address = address
+                # TODO: Call get_st to set initial status.
                 self.on  = "true"
                 self.bri = 254
                 self.xy  = [0.0,0.0];
                 self.ct  = 201
                 self.on_cmd  = 'http://' + ISY_IP + '/rest/nodes/%s/cmd/DON' % self.address;
                 self.off_cmd = 'http://' + ISY_IP + '/rest/nodes/%s/cmd/DOF' % self.address;
+                # TODO: Get brightness level working...
+                self.bri_cmd = 'http://' + ISY_IP + '/rest/nodes/%s/cmd/BRI=' % self.address;
                 self.st_cmd = 'http://' + ISY_IP + '/rest/nodes/%s/ST' % self.address;
                 self.auth    = HTTPBasicAuth(ISY_USERNAME, ISY_PASSWORD);
-        
-        def set_on(self):
-                L.debug('Get: ' + self.on_cmd);
-                r = requests.get(self.on_cmd, auth=self.auth)
+
+        def set(self,cmd,value):
+                if cmd == "on":
+                        if value == "true":
+                                ret = self.do_rest(self.on_cmd)
+                        else:
+                                ret = self.do_rest(self.off_cmd)
+                        if ret == True:
+                                self.on = value
+                elif cmd == "xy":
+                        # No ISY device supports this.
+                        ret = False
+                elif cmd == "bri":
+                        cmd = self.bri_cmd + value;
+                        ret = self.do_rest(self.bri_cmd)
+                        if ret == True:
+                                self.bri = value
+                elif cmd == "ct":
+                        # No ISY device supports this.
+                        ret = True
+                return ret
+                
+        def do_rest(self,rest):
+                r = requests.get(rest, auth=self.auth)
                 if r.status_code == 200:
                         self.on = "true"
                         return True
                 return False
     
-        def set_off(self):
-                L.debug('Get: ' + self.off_cmd);
-                r = requests.get(self.off_cmd, auth=self.auth)
-                if r.status_code == 200:
-                        self.on = "false"
-                        return True
-                return False
-
         # TODO: Call st_cmd and parse it.
         def get_st(self):
                 L.debug('ST: ' + self.st_cmd);
                 r = requests.get(self.st_cmd, auth=self.auth)
-                return ((r.status_code == 200), "true", "[0.0,0.0]", 254, 201)
+                return (r.status_code == 200)
 
 def run(devices, logger=False):
         global L
@@ -464,7 +490,6 @@ def run(devices, logger=False):
                         httpd.join(1)
         except (KeyboardInterrupt, SystemExit):
                 L.info("Waiting for connections to end before exiting")
-<<<<<<< HEAD
                 responder.stop()
                 broadcaster.stop()
                 httpd.stop()
@@ -495,14 +520,9 @@ if __name__ == '__main__':
 
         #  [ 'Name', on, XY, BRI, CT ]
         DEVICES = [
-                ['Floor Lamp',      isy_rest_handler('2E 59 94 1')],
-                ['Test Outlet',     isy_rest_handler('2E 59 94x')],
-                ['Wemo Light',      isy_rest_handler('2E 59 94x')],
+                isy_rest_handler('Floor Lamp','2E 59 94 1'),
+                isy_rest_handler('Test Outlet','2E 59 94x'),
+                isy_rest_handler('Wemo Light','2E 59 94x'),
         ]
 
         run(DEVICES,logger);
-=======
-        responder.stop()
-        broadcaster.stop()
-        httpd.stop()
->>>>>>> upstream/master
