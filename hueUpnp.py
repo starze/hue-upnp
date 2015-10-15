@@ -257,20 +257,21 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                 # return the payload for "GET /api/lights" sooner.  The 1 sec sleeps
                 # have been removed and we only do another "request.recv" if the
                 # content-length is found and greater than 0
-                # TODO: - -jimboca - Dumb assumption for now, this comes from Amazon Echo, so assume we have everything.
-                if "application/x-www-form-urlencoded" not in data:
-                        L.debug("{} HTTP Request 1: {}".format(client,data.strip()))
-                        if "\r\n\r\n" not in data:
-                                data += self.request.recv(1024) #try one more time
-                                L.debug("{} HTTP Request 2: {}".format(client,data.strip()))
-                        if "\r\n\r\n" not in data:
-                                data += self.request.recv(1024) #try one more time then give up
-                                L.debug("{} HTTP Request 3: {}".format(client,data.strip()))
-                        searchObj = re.search( r'content-length: (\d+)', data, re.I)
-                        if searchObj and int(searchObj.group(1)) > 0:
-                                #got the header--now grab the remaining content if any
-                                data += self.request.recv(int(searchObj.group(1)))
-                L.debug("{} HTTP Request Full: {}".format(client,data.strip()))
+                #2015-10: Header size is now computed to determine exactly how much
+                # data still needs to be pulled
+                if "\r\n\r\n" not in data:
+                        data += self.request.recv(1024) #try one more time
+                if "\r\n\r\n" not in data:
+                        data += self.request.recv(1024) #try one more time then give up
+                searchObj = re.search( r'content-length: (\d+)', data, re.I)
+                if searchObj and int(searchObj.group(1)) > 0:
+                        contentLength = int(searchObj.group(1))
+                        headerLength = data.find("\r\n\r\n") + 4
+                        L.debug("Header-Length={} Content-Length={}".format(headerLength,contentLength))
+                        #got the header--now grab the remaining content if any
+                        if len(data) < headerLength + contentLength:
+                                data += self.request.recv(headerLength + contentLength - len(data))
+                L.debug("HTTP Request: {}".format(data.strip()))
 
                 if "description.xml" in data:
                         self.request.sendall(DESCRIPTION_XML)
@@ -463,6 +464,7 @@ def run(devices, logger=False):
                         httpd.join(1)
         except (KeyboardInterrupt, SystemExit):
                 L.info("Waiting for connections to end before exiting")
+<<<<<<< HEAD
                 responder.stop()
                 broadcaster.stop()
                 httpd.stop()
@@ -499,3 +501,8 @@ if __name__ == '__main__':
         ]
 
         run(DEVICES,logger);
+=======
+        responder.stop()
+        broadcaster.stop()
+        httpd.stop()
+>>>>>>> upstream/master
