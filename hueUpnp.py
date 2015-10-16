@@ -3,7 +3,7 @@
 #   sudo apt-get install python-pip
 #   sudo pip install requests
 
-import socket, struct, email.utils, time, SocketServer, re, subprocess, sys, logging, logging.handlers, thread
+import socket, struct, email.utils, time, SocketServer, re, subprocess, sys, logging, logging.handlers, json, thread
 from threading import Thread
 import requests
 from requests.auth import HTTPDigestAuth,HTTPBasicAuth
@@ -115,9 +115,9 @@ NEWDEVELOPERSYNC_JSON = """
 [{"success":{"%s":""}}]
 """ % ("username")
 
-#example template values: "1", "on", "true"
+#example template values: "success", "1", "on", "true"
 PUTRESP_TEMPLATE_JSON = """
-[{"success":{"/lights/%s/state/%s":%s}}]
+[{"%s":{"/lights/%s/state/%s":%s}}]
 """
 
 JSON_HEADERS = """HTTP/1.1 200 OK
@@ -264,6 +264,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                         #got the header--now grab the remaining content if any
                         if len(data) < headerLength + contentLength:
                                 data += self.request.recv(headerLength + contentLength - len(data))
+                                           
                 L.debug("{}: HTTP Request: {}".format(client,data.strip()))
 
                 if "description.xml" in data:
@@ -305,29 +306,49 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                         #if "/lights/" in data and "/state" in data:
                         if matchObj:
                                 L.debug("{} Got PUT request to do something".format(client))
-                                # reqId is what Alexa passes, the mach will include the trailing / for now.
+                                # reqId is what Alexa passes, the match will include the trailing / for now.
                                 reqId    =  matchObj.group(1)
                                 reqHueNo =  matchObj.group(2)
-                                reqCmd = "on"
-                                reqValue = "true"
-                                #note: only handling first element if multiple (for now)
-                                # Harmony: {"on":true,"bri":254}
-                                # Echo: {"on": true}
-                                # TODO: Parse the json to get all the info and pass to the device.set()
-                                searchObj = re.search( r'\{"(.*?)":\s*(.*?)[,\}]', data, re.I)
-                                L.debug("%s PUT Request: '%s' '%s' '%s'" % (client, reqHueNo, reqCmd, reqValue))
-                                if searchObj:
-                                        reqCmd = searchObj.group(1)
-                                        reqValue = searchObj.group(2)
-                                        # 2015-10-12 21:23:20,411 [DEBUG] 192.168.1.74 PUT Request: 1 |-| on |-|  true
-
-                                # Update the device.
-                                # TODO: Check for valid device number
-                                device_num = int(reqHueNo) - 1
-                                st = DEVICES[device_num].set(reqCmd,reqValue)
-
-                                # TODO: Return success false if not st?
-                                resp = PUTRESP_TEMPLATE_JSON % (reqHueNo,reqCmd,reqValue);
+                                # Just the content
+                                # Examples: 
+                                #   Harmony: {"on":true,"bri":254}
+                                #   Echo: {"on": true}
+                                L.debug("%s Content data=---\n%s\n---" % (client, data[-contentLength:]))
+                                parsedContent = json.loads(data[-contentLength:])
+                                L.debug("%s Parsed Content data=---\n%s\n---" % (client, str(parsedContent)))
+                                # 
+                                # Check that we understand the request data
+                                #
+                                if 'on' in parsedContent:
+                                        reqCmd = 'on'
+                                        if parsedContent['on'] == True:
+                                                reqValue = 'true'
+                                        else:
+                                                reqValue = 'false'
+                                elif 'bri' in parsedContent:
+                                        reqCmd = 'bri'
+                                        reqValue = parsedContent['bri']
+                                elif 'xy' in parsedContent:
+                                        reqCmd = 'xy'
+                                        reqValue = parsedContent['xy']
+                                else:
+                                        # TODO: throw an exception, or just print error?
+                                        return
+                                # 
+                                # Update the specified device
+                                #
+                                deviceNum = int(reqHueNo) - 1
+                                # TODO: Check that device number is valid.
+                                dst = DEVICS[deviceNum].set(parsedContent)
+                                # Build the proper response
+                                if dst == True:
+                                        respStatus = "success"
+                                else:
+                                        # TODO: What is the right status?
+                                        respStatus = "failed" 
+                                #
+                                # 
+                                resp = PUTRESP_TEMPLATE_JSON % (respStatus,reqHueNo,reqCmd,reqValue);
                                 self.send_json(resp)
 
                         #All other PUT /api/ send back a blank response
@@ -436,25 +457,20 @@ class isy_rest_handler(object):
                 self.st_cmd = 'http://' + ISY_IP + '/rest/nodes/%s/ST' % self.address;
                 self.auth    = HTTPBasicAuth(ISY_USERNAME, ISY_PASSWORD);
 
-        def set(self,cmd,value):
-                if cmd == "on":
-                        if value == "true":
+        def set(self,data):
+                ret = False
+                if 'on' in data:
+                        if data['on'] == True:
                                 ret = self.do_rest(self.on_cmd)
                         else:
                                 ret = self.do_rest(self.off_cmd)
                         if ret == True:
                                 self.on = value
-                elif cmd == "xy":
-                        # No ISY device supports this.
-                        ret = False
-                elif cmd == "bri":
-                        cmd = self.bri_cmd + value;
+                elif 'bri' in data:
+                        cmd = self.bri_cmd + data['bri'];
                         ret = self.do_rest(self.bri_cmd)
                         if ret == True:
                                 self.bri = value
-                elif cmd == "ct":
-                        # No ISY device supports this.
-                        ret = True
                 return ret
                 
         def do_rest(self,rest):
