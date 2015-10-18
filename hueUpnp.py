@@ -202,16 +202,19 @@ class Responder(Thread):
 
                                         if "urn:schemas-upnp-org:device:basic:1" in data:
                                                 L.debug("received urn:schemas-upnp-org:device:basic:1")
-                                                sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"urn:schemas-upnp-org:device:basic:1",SERIALNO), addr)
-                                                L.info("Response sent: http://{}:{}/description.xml".format(IP,HTTP_PORT))
+                                                resp = UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"urn:schemas-upnp-org:device:basic:1",SERIALNO)
+                                                sock.sendto(resp, addr)
+                                                L.info("Response sent: "+resp)
                                         elif "upnp:rootdevice" in data:
                                                 L.debug("received upnp:rootdevice")
-                                                sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"upnp:rootdevice",SERIALNO), addr)
-                                                L.info("Response sent: http://{}:{}/description.xml".format(IP,HTTP_PORT))
+                                                resp = UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"upnp:rootdevice",SERIALNO)
+                                                sock.sendto(resp, addr)
+                                                L.info("Response sent: "+resp)
                                         elif "ssdp:all" in data:
                                                 L.debug("received ssdp:all responding with upnp:rootdevice")
-                                                sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"upnp:rootdevice",SERIALNO), addr)
-                                                L.info("Response sent: http://{}:{}/description.xml".format(IP,HTTP_PORT))
+                                                resp = UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"upnp:rootdevice",SERIALNO)
+                                                sock.sendto(resp, addr)
+                                                L.info("Response sent: "+resp)
                                         else:
                                                 L.debug("ignoring")
                                         L.debug("----------------------")
@@ -536,8 +539,8 @@ if __name__ == '__main__':
 
         # If using the ISY calls, set your info here:
         ISY_IP       = '192.168.1.64'
-        ISY_USERNAME = 'admin'
-        ISY_PASSWORD = 'diabl099'
+        ISY_USERNAME = 'notmyuser'
+        ISY_PASSWORD = 'notmypassword'
 
         #  [ 'Name', on, XY, BRI, CT ]
         DEVICES = [
