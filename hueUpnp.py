@@ -3,10 +3,11 @@
 #   sudo apt-get install python-pip
 #   sudo pip install requests
 
-import socket, struct, email.utils, time, SocketServer, re, subprocess, sys, logging, logging.handlers, json, thread
+import socket, struct, email.utils, time, SocketServer, re, subprocess, sys, logging, logging.handlers, thread
 from threading import Thread
 import requests
 from requests.auth import HTTPDigestAuth,HTTPBasicAuth
+import json
 
 #config
 BCAST_IP = "239.255.255.250"
@@ -241,6 +242,7 @@ class Httpd(Thread):
 
 class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
         def handle(self):
+                global json
                 client = self.client_address[0]
                 L.info("{}: reading http request".format(client))
                 data = self.request.recv(1024)
@@ -321,7 +323,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                 #
                                 if 'on' in parsedContent:
                                         reqCmd = 'on'
-                                        if parsedContent['on'] == True:
+                                        if parsedContent['on']:
                                                 reqValue = 'true'
                                         else:
                                                 reqValue = 'false'
@@ -339,9 +341,9 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                 #
                                 deviceNum = int(reqHueNo) - 1
                                 # TODO: Check that device number is valid.
-                                dst = DEVICS[deviceNum].set(parsedContent)
+                                dst = DEVICES[deviceNum].set(parsedContent)
                                 # Build the proper response
-                                if dst == True:
+                                if dst:
                                         respStatus = "success"
                                 else:
                                         # TODO: What is the right status?
@@ -460,17 +462,20 @@ class isy_rest_handler(object):
         def set(self,data):
                 ret = False
                 if 'on' in data:
-                        if data['on'] == True:
+                        if data['on']:
                                 ret = self.do_rest(self.on_cmd)
+                                if ret:
+                                        self.on = "true"
                         else:
                                 ret = self.do_rest(self.off_cmd)
-                        if ret == True:
-                                self.on = value
+                                if ret:
+                                        self.on = "false"
                 elif 'bri' in data:
                         cmd = self.bri_cmd + data['bri'];
                         ret = self.do_rest(self.bri_cmd)
-                        if ret == True:
-                                self.bri = value
+                        if ret:
+                                self.bri = data['bri']
+                L.debug
                 return ret
                 
         def do_rest(self,rest):
@@ -531,8 +536,8 @@ if __name__ == '__main__':
 
         # If using the ISY calls, set your info here:
         ISY_IP       = '192.168.1.64'
-        ISY_USERNAME = 'notmyuser'
-        ISY_PASSWORD = 'notmypassword'
+        ISY_USERNAME = 'admin'
+        ISY_PASSWORD = 'diabl099'
 
         #  [ 'Name', on, XY, BRI, CT ]
         DEVICES = [
