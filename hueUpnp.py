@@ -14,7 +14,7 @@ BCAST_IP = "239.255.255.250"
 UPNP_PORT = 1900
 BROADCAST_INTERVAL = 200 # Seconds between upnp broadcast
 IP = "192.168.1.77" # Callback http webserver IP (this machine)
-HTTP_PORT = 80 # HTTP-port to serve icons, xml, json (80 is most compatible but requires root)
+HTTP_PORT = 8085 # HTTP-port to serve icons, xml, json (80 is most compatible but requires root)
 GATEWAYIP = "192.168.1.1" # shouldn't matter but feel free to adjust
 MACADDRESS = "b8:27:eb:06:9d:18" # shouldn't matter but feel free to adjust
 SERIALNO = re.sub(':','',MACADDRESS) # same as the MACADDRESS with colons removed
@@ -379,19 +379,19 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                 matchObj = re.match( r'GET /api/(.+) ', data, re.I)
                                 if matchObj: newDev = matchObj.group(1)
                                 L.info("{} Got request for new dev: {}".format(client,newDev))
-                                json = NEWDEVELOPER_JSON = """{"lights":{"""
+                                json_resp = NEWDEVELOPER_JSON = """{"lights":{"""
                                 i = 1
                                 device_json = ()
                                 for device in DEVICES:
-                                        json += """"%d":""" % (i)
+                                        json_resp += """"%d":""" % (i)
                                         #dst = device.st()
-                                        json += self.get_onelight_json(device)
+                                        json_resp += self.get_onelight_json(device)
                                         if i < len(DEVICES):
-                                                json += ","
+                                                json_resp += ","
                                         i += 1
 
-                                json += """},"schedules":{"1":{"time":"2012-10-29T12:00:00","description":"","name":"schedule","command":{"body":{"on":true,"xy":null,"bri":null,"transitiontime":null},"address":"/api/newdeveloper/groups/0/action","method":"PUT"}}},"config":{"portalservices":false,"gateway":"%s","mac":"%s","swversion":"01005215","linkbutton":false,"ipaddress":"%s:%s","proxyport":0,"swupdate":{"text":"","notify":false,"updatestate":0,"url":""},"netmask":"255.255.255.0","name":"Philips hue","dhcp":true,"proxyaddress":"","whitelist":{"newdeveloper":{"name":"test user","last use date":"2015-02-04T21:35:18","create date":"2012-10-29T12:00:00"}},"UTC":"2012-10-29T12:05:00"},"groups":{"1":{"name":"Group 1","action":{"on":true,"bri":254,"hue":33536,"sat":144,"xy":[0.346,0.3568],"ct":201,"alert":null,"effect":"none","colormode":"xy","reachable":null},"lights":["1","2"]}},"scenes":{}}\n""" % (GATEWAYIP, MACADDRESS, IP, HTTP_PORT)
-                                self.send_json(json)
+                                json_resp += """},"schedules":{"1":{"time":"2012-10-29T12:00:00","description":"","name":"schedule","command":{"body":{"on":true,"xy":null,"bri":null,"transitiontime":null},"address":"/api/newdeveloper/groups/0/action","method":"PUT"}}},"config":{"portalservices":false,"gateway":"%s","mac":"%s","swversion":"01005215","linkbutton":false,"ipaddress":"%s:%s","proxyport":0,"swupdate":{"text":"","notify":false,"updatestate":0,"url":""},"netmask":"255.255.255.0","name":"Philips hue","dhcp":true,"proxyaddress":"","whitelist":{"newdeveloper":{"name":"test user","last use date":"2015-02-04T21:35:18","create date":"2012-10-29T12:00:00"}},"UTC":"2012-10-29T12:05:00"},"groups":{"1":{"name":"Group 1","action":{"on":true,"bri":254,"hue":33536,"sat":144,"xy":[0.346,0.3568],"ct":201,"alert":null,"effect":"none","colormode":"xy","reachable":null},"lights":["1","2"]}},"scenes":{}}\n""" % (GATEWAYIP, MACADDRESS, IP, HTTP_PORT)
+                                self.send_json(json_resp)
                                 L.info("{} Sent HTTP New Dev Response".format(client))
 
                 #I only saw a POST when registering the username
@@ -409,8 +409,8 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
         def get_onelight_json(self,device):
                 #example template values: "on", "[0.0,0.0]", "Hue Lamp 1", "254", "201"
                 # on, bri, xy, ct, name
-                json = """{"state":{"on":%s,"bri":%s,"hue":4444,"sat":254,"xy":%s,"ct":%s,"alert":"none","effect":"none","colormode":"hs","reachable":true},"type":"Extended color light","name":"%s","modelid":"LCT001","swversion":"65003148","pointsymbol":{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}"""
-                return json % (device.on, device.bri, device.xy, device.ct, device.name)
+                json_resp = """{"state":{"on":%s,"bri":%s,"hue":4444,"sat":254,"xy":%s,"ct":%s,"alert":"none","effect":"none","colormode":"hs","reachable":true},"type":"Extended color light","name":"%s","modelid":"LCT001","swversion":"65003148","pointsymbol":{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}"""
+                return json_resp % (device.on, device.bri, device.xy, device.ct, device.name)
 
         def send_json(self,resp):
                 date_str = email.utils.formatdate(timeval=None, localtime=False, usegmt=True)
