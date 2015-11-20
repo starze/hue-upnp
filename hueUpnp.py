@@ -125,7 +125,7 @@ PUTRESP_TEMPLATE_JSON = """
 
 JSON_HEADERS = """HTTP/1.1 200 OK
 CONTENT-LENGTH: %d
-CONTENT-TYPE: text/xml charset=utf-8"
+CONTENT-TYPE: text/xml charset="utf-8"
 DATE: %s
 EXT:
 SERVER: Unspecified, UPnP/1.0, Unspecified
@@ -415,7 +415,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
         def get_onelight_json(self,device):
                 #example template values: "on", "[0.0,0.0]", "Hue Lamp 1", "254", "201"
                 # on, bri, xy, ct, name
-                json_resp = """{"state":{"on":%s,"bri":%s,"hue":4444,"sat":254,"xy":%s,"ct":%s,"alert":"none","effect":"none","colormode":"hs","reachable":true},"type":"Extended color light","name":"%s","modelid":"LCT001","swversion":"65003148","pointsymbol":{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}"""
+                json_resp = """{"state":{"on":%s,"bri":%s,"hue":4444,"sat":254,"xy":%s,"ct":%s,"alert":"none","effect":"none","colormode":"hs","reachable":true},"type":"Extended color light","name":"%s","modelid":"LCT001","swversion":"65003148","pointsymbol":{}}"""
                 return json_resp % (device.on, device.bri, device.xy, device.ct, device.name)
 
         def send_json(self,resp):
@@ -446,7 +446,12 @@ class hue_upnp_super_handler(object):
                 # TODO: If bri is specified, we only call set_bri and ignore on, is that the right thing?
                 # TODO: I think so, because it's up to the bri method to know what to do.
                 if 'bri' in data:
-                        ret = self.set_bri(data['bri'])
+                        # For some reason, the first time on/off is toggled from harmony it passes on: true, bri: 0
+                        # so we assume it really meant full on...
+                        if 'on' in data and data['on'] and data['bri'] == 0:
+                                ret = self.set_on()
+                        else:
+                                ret = self.set_bri(data['bri'])
                         if ret:
                                 self.on = "true"
                                 self.bri = data['bri']
