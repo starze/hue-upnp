@@ -1,3 +1,4 @@
+#!/usr/bin/python
 # TODO:
 #  - Catch startup errors
 #
@@ -10,15 +11,16 @@ from threading import Thread
 import requests
 from requests.auth import HTTPDigestAuth,HTTPBasicAuth
 import json
+import hueUpnp_config
 
 #config
-BCAST_IP = "239.255.255.250"
-UPNP_PORT = 1900
-BROADCAST_INTERVAL = 200 # Seconds between upnp broadcast
-IP = "192.168.1.76" # Callback http webserver IP (this machine)
-HTTP_PORT = 8085 # HTTP-port to serve icons, xml, json (80 is most compatible but requires root)
-GATEWAYIP = "192.168.1.1" # shouldn't matter but feel free to adjust
-MACADDRESS = "b8:27:eb:06:9d:18" # shouldn't matter but feel free to adjust
+BCAST_IP = hueUpnp_config.standard['BCAST_IP']
+UPNP_PORT = hueUpnp_config.standard['UPNP_PORT']
+BROADCAST_INTERVAL = hueUpnp_config.standard['BROADCAST_INTERVAL']
+IP = hueUpnp_config.standard['IP']
+HTTP_PORT = hueUpnp_config.standard['HTTP_PORT']
+GATEWAYIP = hueUpnp_config.standard['GATEWAYIP']
+MACADDRESS = hueUpnp_config.standard['MACADDRESS']
 SERIALNO = re.sub(':','',MACADDRESS) # same as the MACADDRESS with colons removed
 
 L = False
@@ -271,7 +273,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                         #got the header--now grab the remaining content if any
                         if len(data) < headerLength + contentLength:
                                 data += self.request.recv(headerLength + contentLength - len(data))
-                                           
+
                 L.debug("hueUpnp: {}: HTTP Request: {}".format(client,data.strip()))
 
                 if "description.xml" in data:
@@ -298,7 +300,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                 i += 1
                         resp += "}\n"
                         self.send_json(resp)
-                        
+
                 #PUT instruction to do something
                 #Example (hue3-light-off):
                 #PUT /api/lights/3/state HTTP/1.1
@@ -317,13 +319,13 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                 reqId    =  matchObj.group(1)
                                 reqHueNo =  matchObj.group(2)
                                 # Just the content
-                                # Examples: 
+                                # Examples:
                                 #   Harmony: {"on":true,"bri":254}
                                 #   Echo: {"on": true}
                                 L.debug("hueUpnp: %s Content data=---\n%s\n---" % (client, data[-contentLength:]))
                                 parsedContent = json.loads(data[-contentLength:])
                                 L.debug("hueUpnp: %s Parsed Content data=---\n%s\n---" % (client, str(parsedContent)))
-                                # 
+                                #
                                 # Check that we understand the request data
                                 #
                                 if 'on' in parsedContent:
@@ -341,11 +343,12 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                 else:
                                         # TODO: throw an exception, or just print error?
                                         return
-                                # 
+                                #
                                 # Update the specified device
                                 #
                                 deviceNum = int(reqHueNo) - 1
                                 # TODO: Check that device number is valid.
+                                L.debug("device number:%d" % deviceNum)
                                 dst = DEVICES[deviceNum].set(parsedContent)
                                 # Build the proper response
                                 if dst:
@@ -353,9 +356,9 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                 else:
                                         # TODO: Should send the error type:
                                         # TODO: http://www.developers.meethue.com/documentation/error-messages
-                                        respStatus = "error" 
+                                        respStatus = "error"
                                 #
-                                # 
+                                #
                                 resp = PUTRESP_TEMPLATE_JSON % (respStatus,reqHueNo,reqCmd,reqValue);
                                 self.send_json(resp)
 
@@ -435,22 +438,25 @@ class hue_upnp_super_handler(object):
         # Set default initial values
         # Can be overridden, or used as a super, or just use the defaults.
         def get_all(self):
-                self.on  = "true"
-                self.bri = 254
+                self.on  = hueUpnp_config.standard['DEFAULT_ON_STATE']
+                self.bri = hueUpnp_config.standard['DEFAULT_BRI_STATE']
                 self.xy  = [0.0,0.0];
                 self.ct  = 201
 
         # Super set method, parses incomming data and runs the appropriate method.
         def set(self,data):
+                L.debug("In set method. Data={}".format(data))
                 ret = False
                 # TODO: If bri is specified, we only call set_bri and ignore on, is that the right thing?
                 # TODO: I think so, because it's up to the bri method to know what to do.
                 if 'bri' in data:
                         # For some reason, the first time on/off is toggled from harmony it passes on: true, bri: 0
                         # so we assume it really meant full on...
+                        # falk0069: for me it does [on: true, bri: 254]. Adding both 'set_on' and 'set_bri' to else.
                         if 'on' in data and data['on'] and data['bri'] == 0:
                                 ret = self.set_on()
                         else:
+                                ret = self.set_on()
                                 ret = self.set_bri(data['bri'])
                         if ret:
                                 self.on = "true"
@@ -471,48 +477,68 @@ class hue_upnp_super_handler(object):
         # Default, should always be overridden
         def set_on(self):
                 L.error("ERROR: Device " + self.name + " does not have an on command?")
-                
+
         # Default, should always be overridden
         def set_off(self):
                 L.error("ERROR: Device " + self.name + " does not have an off command?")
-                
+
         # Default, should always be overridden
         def set_bri(self,value):
                 L.error("ERROR: Device " + self.name + " does not have a bri command?")
-                
+
         # Default, should always be overridden
         def set_ct(self,value):
                 L.error("ERROR: Device " + self.name + " does not have a ct command?")
-                
+
         # Default, should always be overridden
         def set_xy(self,value):
                 L.error("ERROR: Device " + self.name + " does not have a xy command?")
-                
+
 class hue_upnp_helper_handler(hue_upnp_super_handler):
-        def __init__(self, name):
+        def __init__(self, name, prog):
                 super(hue_upnp_helper_handler,self).__init__(name)
-                self.program = "./hue-upnp-helper.sh"
+                self.program = prog
 
         def set_on(self):
                 # Use external program to do "stuff" if desired
-                return subprocess.Popen([self.program, self.name, "on", "true"])
-                
+                L.debug("Running: {} {} on true".format(self.program, self.name))
+                #Note processes return 0 on success and Popen does not wait
+                p = subprocess.Popen([self.program, self.name, "on", "true"])
+                p.communicate() #wait to complete
+                return not p.returncode
+
         def set_off(self):
                 # Use external program to do "stuff" if desired
-                return subprocess.Popen([self.program, self.name, "on", "false"])
-                
+                L.debug("Running: {} {} on false".format(self.program, self.name))
+                #Note processes return 0 on success and Popen does not wait
+                p = subprocess.Popen([self.program, self.name, "on", "false"])
+                p.communicate() #wait to complete
+                return not p.returncode
+
         def set_bri(self,value):
                 # Use external program to do "stuff" if desired
-                ret = subprocess.Popen([self.program, self.name, "bri", str(value)])
-                
+                L.debug("Running: {} {} bri {}".format(self.program, self.name, str(value)))
+                #Note processes return 0 on success and Popen does not wait
+                p = subprocess.Popen([self.program, self.name, "bri", str(value)])
+                p.communicate() #wait to complete
+                return not p.returncode
+
         def set_ct(self,value):
                 # Use external program to do "stuff" if desired
-                ret = subprocess.Popen([self.program, self.name, "ct", value])
-                
+                L.debug("Running: {} {} ct {}".format(self.program, self.name, value))
+                #Note processes return 0 on success and Popen does not wait
+                p = subprocess.Popen([self.program, self.name, "ct", value])
+                p.communicate() #wait to complete
+                return not p.returncode
+
         def set_xy(self,value):
                 # Use external program to do "stuff" if desired
-                ret = subprocess.Popen([self.program, self.name, "xy", value])
-                
+                L.debug("Running: {} {} xy {}".format(self.program, self.name, value))
+                #Note processes return 0 on success and Popen does not wait
+                p = subprocess.Popen([self.program, self.name, "xy", value])
+                p.communicate() #wait to complete
+                return not p.returncode
+
 class isy_rest_handler(hue_upnp_super_handler):
         def __init__(self, name, address):
                 self.address = address
@@ -533,14 +559,14 @@ class isy_rest_handler(hue_upnp_super_handler):
 
         def set_on(self):
                 return self.do_rest(self.on_cmd)
-                
+
         def set_off(self):
                 return self.do_rest(self.off_cmd)
-                
+
         def set_bri(self,value):
                 cmd = self.on_cmd + "/" + str(value)
                 return self.do_rest(cmd)
-                
+
         def do_rest(self,rest):
                 L.info("ISY REST: " + rest)
                 r = requests.get(rest, auth=self.auth)
@@ -548,14 +574,14 @@ class isy_rest_handler(hue_upnp_super_handler):
                         self.on = "true"
                         return True
                 return False
-    
+
 def run(devices, logger=False):
         global L
         L = logger
         global DEVICES
         DEVICES = devices
         L.info("hueUpnp: Server starting")
-    
+
         responder = Responder()
         broadcaster = Broadcaster()
         httpd = Httpd()
@@ -576,7 +602,8 @@ def run(devices, logger=False):
 
 if __name__ == '__main__':
 
-        debug = False
+        debug = hueUpnp_config.standard['DEBUG']
+        #Let commandline arg override config
         if len(sys.argv) > 1 and sys.argv[1] == '-d':
                 debug = True
 
@@ -587,20 +614,26 @@ if __name__ == '__main__':
                 logger.setLevel(logging.DEBUG)
         else:
                 logger.setLevel(logging.INFO)
-            
+
         consoleHandler = logging.StreamHandler(sys.stdout)
         consoleHandler.setFormatter(logFormatter)
         logger.addHandler(consoleHandler)
         L = logger
-        
-        import hueUpnp_config
+
         ISY_IP       = hueUpnp_config.isy['ip']
         ISY_USERNAME = hueUpnp_config.isy['username']
         ISY_PASSWORD = hueUpnp_config.isy['password']
-        
-        DEVICES = [
-                isy_rest_handler('Floor Lamp','2E 59 94 1'),
-                hue_upnp_helper_handler('Test Outlet'),
-        ]
-        
+
+        DEVICES = []
+        for key in hueUpnp_config.devices:
+            L.debug('Adding device: ' + key + ' - type: ' + (hueUpnp_config.devices[key])[0])
+            if (hueUpnp_config.devices[key])[0] == 'script_handler':
+               DEVICES.append(hue_upnp_helper_handler(key, (hueUpnp_config.devices[key])[1]))
+            elif (hueUpnp_config.devices[key])[0] == 'isy_rest_handler':
+               DEVICES.append(isy_rest_handler(key, (hueUpnp_config.devices[key])[1]))
+            else:
+                L.error("hueUpnp: Unknown device type specified in the config")
+                thread.interrupt_main()  #exiting program
+
+
         run(DEVICES,logger);
