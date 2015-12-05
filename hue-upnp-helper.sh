@@ -1,20 +1,29 @@
 #!/bin/bash
 
 #examples:
-#./hue-upnp-helper.sh 3 on true
-#./hue-upnp-helper.sh 3 xy [0.4544,0.511]
-#./hue-upnp-helper.sh 3 ct 396
-#./hue-upnp-helper.sh 3 bri 254
+#./hue-upnp-helper.sh "Wemo Light" on true
+#./hue-upnp-helper.sh "hue light 2" xy [0.4544,0.511]
+#./hue-upnp-helper.sh "My toaster" ct 396
+#./hue-upnp-helper.sh "PC WOL" bri 254
 
-#HUE LIGHT 1
-if [ "$1" == "1" ]; then 
+echo "$0 called with '$1' '$2' '$3'"
+
+DEVICE1="PC WOL"
+DEVICE2="Wemo Outlet"
+DEVICE3="Wemo Light"
+
+
+#HUE LIGHT 1 (DEVICE1)
+if [ "$1" == "$DEVICE1" ]; then
+
+  echo "Running directive for $DEVICE1"
 
   #ON/OFF Directive
   if [ "$2" == "on" ]; then
     if [ "$3" == "true" ]; then
       echo 1 on true
       #INSERTING WAKEONLAN
-      wakeonlan 11:22:33:44:DD:FF
+      wakeonlan 11:22:33:44:55:66
     elif [ "$3" == "false" ]; then
       echo 1 on false
     fi
@@ -32,8 +41,10 @@ if [ "$1" == "1" ]; then
     echo 1 xy $3
   fi
 
-#HUE LIGHT 2
-elif [ "$1" == "2" ]; then
+#HUE LIGHT 2 (DEVICE2)
+elif [ "$1" == "$DEVICE2" ]; then
+
+  echo "Running directive for $DEVICE2"
 
   #ON/OFF Directive
   if [ "$2" == "on" ]; then
@@ -60,15 +71,19 @@ elif [ "$1" == "2" ]; then
     echo 2 xy $3
   fi
 
-#HUE LIGHT 2
-elif [ "$1" == "3" ]; then
+#HUE LIGHT 3 (DEVICE3)
+elif [ "$1" == "$DEVICE3" ]; then
+
+  echo "Running directive for $DEVICE3"
 
   #ON/OFF Directive
   if [ "$2" == "on" ]; then
     if [ "$3" == "true" ]; then
       echo 3 on true
+      ./wemo_control.sh 192.168.1.111 ON
     elif [ "$3" == "false" ]; then
       echo 3 on false
+      ./wemo_control.sh 192.168.1.111 OFF
     fi
 
   #BRIGHTNESS
