@@ -22,3 +22,7 @@ ST: upnp:rootdevice
 Aug 2015:
 Logitech firmware broke things for me.  I noticed that FIN packets were getting sent during the "GET /api/lights" calls before it got the results.  I removed some of the 1 seconds sleeps that I don't think are needed and I also updated it so additional 'request.recv' aren't done unless a content-length > 0 is found.  Things appear to be back in business now.  
 
+****************************************************************************
+Dec 2015:
+Pulled in jimboca code which includes a nice json parser.  Also, moved everything configurable to a config file: hueUpnp_config.py.  Another note is the hue-upnp-helper.sh now expects the device name instead of the device number as the first parameter.
+
