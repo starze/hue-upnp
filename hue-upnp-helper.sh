@@ -83,4 +83,7 @@ elif [ "$1" == "3" ]; then
   elif [ "$2" == "xy" ]; then
     echo 3 xy $3
   fi
+else
+  echo "Error: Unknown Device '$1' command=$2 $3"
+  exit 1
 fi

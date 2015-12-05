@@ -1,46 +1,29 @@
-import socket, struct, time, SocketServer, re, subprocess, sys, logging, logging.handlers, thread
+# TODO:
+#  - Catch startup errors
+#
+# install pip and requests:
+#   sudo apt-get install python-pip
+#   sudo pip install requests
+
+import socket, struct, email.utils, time, SocketServer, re, subprocess, sys, logging, logging.handlers, thread
 from threading import Thread
+import requests
+from requests.auth import HTTPDigestAuth,HTTPBasicAuth
+import json
 
 #config
 BCAST_IP = "239.255.255.250"
 UPNP_PORT = 1900
 BROADCAST_INTERVAL = 200 # Seconds between upnp broadcast
-IP = "192.168.1.200" # Callback http webserver IP (this machine)
-HTTP_PORT = 8080 # HTTP-port to serve icons, xml, json (80 is most compatible but requires root)
-#external script to easily call other activities (e.g. wol, wemo-switch, etc)
-EXTERNALPROG = "./hue-upnp-helper.sh"
+IP = "192.168.1.76" # Callback http webserver IP (this machine)
+HTTP_PORT = 8085 # HTTP-port to serve icons, xml, json (80 is most compatible but requires root)
 GATEWAYIP = "192.168.1.1" # shouldn't matter but feel free to adjust
-MACADDRESS = "00:17:88:17:12:2c" # shouldn't matter but feel free to adjust
+MACADDRESS = "b8:27:eb:06:9d:18" # shouldn't matter but feel free to adjust
 SERIALNO = re.sub(':','',MACADDRESS) # same as the MACADDRESS with colons removed
 
-#Setup Logging Output
-logFormatter = logging.Formatter("%(asctime)s [%(levelname)-5.5s] %(message)s")
-L = logging.getLogger()
-L.setLevel(logging.DEBUG) #set to INFO or ERROR for less logging
-consoleHandler = logging.StreamHandler(sys.stdout)
-consoleHandler.setFormatter(logFormatter)
-L.addHandler(consoleHandler)
-
-#GLOBAL HUE STATES
-HUE1NAME = "PC WOL" #Default: Hue Lamp 1
-HUE1ON = "true"
-HUE1XY = "[0.0,0.0]"
-HUE1BRI = "254"
-HUE1CT = "201"
-HUE2NAME = "Wemo Outlet" #Default: Hue Lamp 2
-HUE2ON = "true"
-HUE2XY = "[0.0,0.0]"
-HUE2BRI = "254"
-HUE2CT = "201"
-HUE3NAME = "Wemo Light" #Default: Hue Lamp 3
-HUE3ON = "true"
-HUE3XY = "[0.0,0.0]"
-HUE3BRI = "254"
-HUE3CT = "201"
+L = False
 
 M_SEARCH_REQ_MATCH = "M-SEARCH"
-
-L.info("Server starting")
 
 UPNP_BROADCAST = """NOTIFY * HTTP/1.1
 HOST: 239.255.255.250:1900
@@ -65,12 +48,20 @@ USN: uuid:2f402f80-da50-11e1-9b23-{}::upnp:rootdevice
 
 """.replace("\n", "\r\n")
 
+# TODO: jimboca: check others to see if they are specifying this?
+#CACHE-CONTROL: max-age=86400
+#EXT:
+#LOCATION: http://{}:{}/description.xml
+#SERVER: FreeRTOS/6.0.5, UPnP/1.0, IpBridge/0.1
+#ST: urn:schemas-upnp-org:device:basic:1
+#USN: uuid:Socket-1_0-221438K0100073::urn:schemas-upnp-org:device:basic:1
+
 #updated modelName and removed extra tabs and \r to match examples on web
 DESCRIPTION_XML = """HTTP/1.1 200 OK
 Content-type: text/xml
 Connection: Keep-Alive
 
-<?xml version="1.0"?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <root xmlns="urn:schemas-upnp-org:device-1-0">
 <specVersion>
 <major>1</major>
@@ -120,49 +111,27 @@ Connection: Keep-Alive
 
 #20150920-Added in case it is used for discovery
 APICONFIG_JSON = """
-[{{"swversion":"01008227","apiversion":"1.2.1","name":"Smartbridge 1","mac":"{}",}}]
-""".format(MACADDRESS).replace("\n", "\r\n")
-
-NEWDEVELOPER_JSON = """
-{{"lights":{{"1":{{"state":{{"on":true,"bri":254,"hue":4444,"sat":254,"xy":[0.0,0.0],"ct":0,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"2":{{"state":{{"on":true,"bri":254,"hue":23536,"sat":144,"xy":[0.0,0.0],"ct":201,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"3":{{"state":{{"on":true,"bri":254,"hue":65136,"sat":254,"xy":[0.0,0.0],"ct":201,"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}}}},"schedules":{{"1":{{"time":"2012-10-29T12:00:00","description":"","name":"schedule","command":{{"body":{{"on":true,"xy":null,"bri":null,"transitiontime":null}},"address":"/api/newdeveloper/groups/0/action","method":"PUT"}}}}}},"config":{{"portalservices":false,"gateway":"{}","mac":"{}","swversion":"01005215","linkbutton":false,"ipaddress":"{}:{}","proxyport":0,"swupdate":{{"text":"","notify":false,"updatestate":0,"url":""}},"netmask":"255.255.255.0","name":"Philips hue","dhcp":true,"proxyaddress":"","whitelist":{{"newdeveloper":{{"name":"test user","last use date":"2015-02-04T21:35:18","create date":"2012-10-29T12:00:00"}}}},"UTC":"2012-10-29T12:05:00"}},"groups":{{"1":{{"name":"Group 1","action":{{"on":true,"bri":254,"hue":33536,"sat":144,"xy":[0.346,0.3568],"ct":201,"alert":null,"effect":"none","colormode":"xy","reachable":null}},"lights":["1","2"]}}}},"scenes":{{}}}}
-""".format(HUE1NAME, HUE2NAME, HUE3NAME, GATEWAYIP, MACADDRESS, IP, HTTP_PORT).replace("\n", "\r\n")
-
+[{"swversion":"01008227","apiversion":"1.2.1","name":"Smartbridge 1","mac":"%s",}]
+""" % (MACADDRESS)
 
 NEWDEVELOPERSYNC_JSON = """
-[{{"success":{{"{}":""}}}}]
-""".format("username").replace("\n", "\r\n")
+[{"success":{"%s":""}}]
+""" % ("username")
 
-#example template values: "true", "[0.0,0.0]", "Hue Lamp 1", "254", "201", [Repeat for lamp 2 and 3]
-# on, bri, xy, ct, name, [repeat]
-LIGHTSRESP_TEMPLATE_JSON = """
-{{"1":{{"state":{{"on":{},"bri":{},"hue":4444,"sat":254,"xy":{},"ct":{},"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"2":{{"state":{{"on":{},"bri":{},"hue":23536,"sat":144,"xy":{},"ct":{},"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}},"3":{{"state":{{"on":{},"bri":{},"hue":65136,"sat":254,"xy":{},"ct":{},"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}}}}
-""".replace("\n", "\r\n")
-
-
-#example template values: "on", "[0.0,0.0]", "Hue Lamp 1", "254", "201"
-# on, bri, xy, ct, name
-ONELIGHTRESP_TEMPLATE_JSON = """
-{{"state":{{"on":{},"bri":{},"hue":23536,"sat":144,"xy":{},"ct":{},"alert":"none","effect":"none","colormode":"hs","reachable":true}},"type":"Extended color light","name":"{}","modelid":"LCT001","swversion":"65003148","pointsymbol":{{"1":"none","2":"none","3":"none","4":"none","5":"none","6":"none","7":"none","8":"none"}}}}
-""".replace("\n", "\r\n")
-
-
-#example template values: "1", "on", "true"
+#example template values: "success", "1", "on", "true"
 PUTRESP_TEMPLATE_JSON = """
-[{{"success":{{"/lights/{}/state/{}":{}}}}}]
-""".replace("\n", "\r\n")
+[{"%s":{"/lights/%s/state/%s":%s}}]
+"""
 
 JSON_HEADERS = """HTTP/1.1 200 OK
-Access-control-allow-headers: Content-Type
-Connection: close
-Pragma: no-cache
-Access-control-max-age: 0
-Access-control-allow-methods: POST, GET, OPTIONS, PUT, DELETE
-Content-type: application/json; charset=utf-8
-Access-control-allow-origin: *
-Access-control-allow-credentials: true
-Expires: Mon, 1 Aug 2011 09:00:00 GMT
-Cache-control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0
-""".replace("\n", "\r\n")
+CONTENT-LENGTH: %d
+CONTENT-TYPE: text/xml charset="utf-8"
+DATE: %s
+EXT:
+SERVER: Unspecified, UPnP/1.0, Unspecified
+CONNECTION: close
+
+%s"""
 
 
 ICON_HEADERS = """HTTP/1.1 200 OK
@@ -214,9 +183,10 @@ class Responder(Thread):
                                         sock.close()
                                         return
                         else:
+                                #L.debug("hueUpnp: \n-> debug received from {}\n{}\n<-\n".format(addr,data.strip()))
                                 if M_SEARCH_REQ_MATCH in data:
-                                        L.info("received M-SEARCH from {}".format(addr))
-                                        L.debug(" data:\n{}".format(data.strip()))
+                                        L.info("hueUpnp: received M-SEARCH from {}".format(addr))
+                                        #L.debug("hueUpnp:  data:\n{}".format(data.strip()))
 
                                         #Reply back with same ST or rootdevice for ssdp:all
                                         #20150920 - Conflicting data found online as to how the hue responds
@@ -233,21 +203,24 @@ class Responder(Thread):
                                         #http://www.developers.meethue.com/documentation/changes-bridge-discovery
 
                                         if "urn:schemas-upnp-org:device:basic:1" in data:
-                                                L.debug("received urn:schemas-upnp-org:device:basic:1")
-                                                sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"urn:schemas-upnp-org:device:basic:1",SERIALNO), addr)
-                                                L.info("Response sent: http://{}:{}/description.xml".format(IP,HTTP_PORT))
+                                                L.debug("hueUpnp: received urn:schemas-upnp-org:device:basic:1")
+                                                resp = UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"urn:schemas-upnp-org:device:basic:1",SERIALNO)
+                                                sock.sendto(resp, addr)
+                                                L.info("hueUpnp: Response sent: "+resp)
                                         elif "upnp:rootdevice" in data:
-                                                L.debug("received upnp:rootdevice")
-                                                sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"upnp:rootdevice",SERIALNO), addr)
-                                                L.info("Response sent: http://{}:{}/description.xml".format(IP,HTTP_PORT))
+                                                L.debug("hueUpnp: received upnp:rootdevice")
+                                                resp = UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"upnp:rootdevice",SERIALNO)
+                                                sock.sendto(resp, addr)
+                                                L.info("hueUpnp: Response sent: "+resp)
                                         elif "ssdp:all" in data:
-                                                L.debug("received ssdp:all responding with upnp:rootdevice")
-                                                sock.sendto(UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"upnp:rootdevice",SERIALNO), addr)
-                                                L.info("Response sent: http://{}:{}/description.xml".format(IP,HTTP_PORT))
+                                                L.debug("hueUpnp: received ssdp:all responding with upnp:rootdevice")
+                                                resp = UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"upnp:rootdevice",SERIALNO)
+                                                sock.sendto(resp, addr)
+                                                L.info("hueUpnp: Response sent: "+resp)
                                         else:
-                                                L.debug("ignoring")
-                                        L.debug("----------------------")
-                                        L.debug("  ")
+                                                L.debug("hueUpnp: ignoring")
+                                        L.debug("hueUpnp: ----------------------")
+                                        L.debug("hueUpnp:   ")
 
         def stop(self):
                 self.interrupted = True
@@ -266,7 +239,7 @@ class Httpd(Thread):
                         self.server.allow_reuse_address = True
                         self.server.serve_forever()
                 except socket.error as msg:
-                        L.info("Http Socket Error: {}".format(msg))
+                        L.info("hueUpnp: Http Socket Error: {}".format(msg))
                         thread.interrupt_main()  #exiting program
 
         def stop(self):
@@ -274,8 +247,9 @@ class Httpd(Thread):
 
 class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
         def handle(self):
-                global HUE1ON, HUE1XY, HUE1BRI, HUE1CT, HUE2ON, HUE2XY, HUE2BRI, HUE2CT, HUE3ON, HUE3XY, HUE3BRI, HUE3CT
-                L.info("http request from {}".format(self.client_address[0]))
+                global json
+                client = self.client_address[0]
+                L.info("hueUpnp: {}: reading http request".format(client))
                 data = self.request.recv(1024)
 
                 #all data isnt always sent right away--try a couple more times
@@ -293,16 +267,16 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                 if searchObj and int(searchObj.group(1)) > 0:
                         contentLength = int(searchObj.group(1))
                         headerLength = data.find("\r\n\r\n") + 4
-                        L.debug("Header-Length={} Content-Length={}".format(headerLength,contentLength))
+                        L.debug("hueUpnp: Header-Length={} Content-Length={}".format(headerLength,contentLength))
                         #got the header--now grab the remaining content if any
                         if len(data) < headerLength + contentLength:
                                 data += self.request.recv(headerLength + contentLength - len(data))
-                L.debug("HTTP Request: {}".format(data.strip()))
+                                           
+                L.debug("hueUpnp: {}: HTTP Request: {}".format(client,data.strip()))
 
                 if "description.xml" in data:
-                        #time.sleep(1)  #I don't think we need to have a delay
                         self.request.sendall(DESCRIPTION_XML)
-                        L.info("Sent HTTP description.xml Response")
+                        L.info("hueUpnp: {} Sent HTTP description.xml Response".format(client))
 
                 elif "hue_logo_0.png" in data:
                         self.request.sendall(ICON_HEADERS)
@@ -313,10 +287,18 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
 
                 #Request for all lights
                 elif re.match( r'GET /api/.*lights ', data, re.I):
-                        self.request.sendall(JSON_HEADERS)
-                        self.request.sendall(LIGHTSRESP_TEMPLATE_JSON.format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME, HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME, HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME))
-                        L.debug("Sent HTTP All Lights Response: {}-{}-{}-{}-{} |  {}-{}-{}-{}-{} | {}-{}-{}-{}-{}".format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME, HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME, HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME))
-
+                        resp = "\n{"
+                        i = 1
+                        for device in DEVICES:
+                                # TODO: Force update of device? dst = device.st()
+                                resp += "\"%d\":" % (i)
+                                resp += self.get_onelight_json(device)
+                                if i < len(DEVICES):
+                                        resp += ","
+                                i += 1
+                        resp += "}\n"
+                        self.send_json(resp)
+                        
                 #PUT instruction to do something
                 #Example (hue3-light-off):
                 #PUT /api/lights/3/state HTTP/1.1
@@ -327,107 +309,253 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                 # or (multiple commands (on and bri) (only handle first item for now)
                 #{"on":true,"bri":254}   resp: [{"success":{"/lights/2/state/on":true}}]
                 elif "PUT /api/" in data:
-                        matchObj = re.match( r'PUT /api/.*lights/(\d+)/state', data, re.I)
+                        matchObj = re.match( r'PUT /api/(.*)lights/(\d+)/state', data, re.I)
                         #if "/lights/" in data and "/state" in data:
                         if matchObj:
-                                L.debug("Got PUT request to do something")
-                                reqHueNo =  matchObj.group(1)
-                                reqCmd = "on"
-                                reqValue = "true"
-                                #note: only handling first element if multiple (for now)
-                                searchObj = re.search( r'\{"(.*?)":(.*?)[,\}]', data, re.I)
-                                if searchObj:
-                                        reqCmd = searchObj.group(1)
-                                        reqValue = searchObj.group(2)
-                                L.debug("PUT Request: {} |-| {} |-| {}".format(reqHueNo, reqCmd, reqValue))
-
-                                #Update Global Hue States
-                                if reqHueNo == "1":
-                                        if reqCmd == "on":
-                                                HUE1ON = reqValue
-                                        elif reqCmd == "xy":
-                                                HUE1XY = reqValue
-                                        elif reqCmd == "bri":
-                                                HUE1BRI = reqValue
-                                        elif reqCmd == "ct":
-                                                HUE1CT = reqValue
-                                elif reqHueNo == "2":
-                                        if reqCmd == "on":
-                                                HUE2ON = reqValue
-                                        elif reqCmd == "xy":
-                                                HUE2XY = reqValue
-                                        elif reqCmd == "bri":
-                                                HUE2BRI = reqValue
-                                        elif reqCmd == "ct":
-                                                HUE2CT = reqValue
-                                elif reqHueNo == "3":
-                                        if reqCmd == "on":
-                                                HUE3ON = reqValue
-                                        elif reqCmd == "xy":
-                                                HUE3XY = reqValue
-                                        elif reqCmd == "bri":
-                                                HUE3BRI = reqValue
-                                        elif reqCmd == "ct":
-                                                HUE3CT = reqValue
-
-                                #Use external program to do "stuff" if desired
-                                subprocess.Popen([EXTERNALPROG, reqHueNo, reqCmd, reqValue])
-
-                                self.request.sendall(JSON_HEADERS)
-                                self.request.sendall(PUTRESP_TEMPLATE_JSON.format(reqHueNo,reqCmd,reqValue))
-                                L.debug("Sent HTTP Put Response: {}".format(PUTRESP_TEMPLATE_JSON.format(reqHueNo,reqCmd,reqValue)))
+                                L.debug("hueUpnp: {} Got PUT request to do something".format(client))
+                                # reqId is what Alexa passes, the match will include the trailing / for now.
+                                reqId    =  matchObj.group(1)
+                                reqHueNo =  matchObj.group(2)
+                                # Just the content
+                                # Examples: 
+                                #   Harmony: {"on":true,"bri":254}
+                                #   Echo: {"on": true}
+                                L.debug("hueUpnp: %s Content data=---\n%s\n---" % (client, data[-contentLength:]))
+                                parsedContent = json.loads(data[-contentLength:])
+                                L.debug("hueUpnp: %s Parsed Content data=---\n%s\n---" % (client, str(parsedContent)))
+                                # 
+                                # Check that we understand the request data
+                                #
+                                if 'on' in parsedContent:
+                                        reqCmd = 'on'
+                                        if parsedContent['on']:
+                                                reqValue = 'true'
+                                        else:
+                                                reqValue = 'false'
+                                elif 'bri' in parsedContent:
+                                        reqCmd = 'bri'
+                                        reqValue = parsedContent['bri']
+                                elif 'xy' in parsedContent:
+                                        reqCmd = 'xy'
+                                        reqValue = parsedContent['xy']
+                                else:
+                                        # TODO: throw an exception, or just print error?
+                                        return
+                                # 
+                                # Update the specified device
+                                #
+                                deviceNum = int(reqHueNo) - 1
+                                # TODO: Check that device number is valid.
+                                dst = DEVICES[deviceNum].set(parsedContent)
+                                # Build the proper response
+                                if dst:
+                                        respStatus = "success"
+                                else:
+                                        # TODO: Should send the error type:
+                                        # TODO: http://www.developers.meethue.com/documentation/error-messages
+                                        respStatus = "error" 
+                                #
+                                # 
+                                resp = PUTRESP_TEMPLATE_JSON % (respStatus,reqHueNo,reqCmd,reqValue);
+                                self.send_json(resp)
 
                         #All other PUT /api/ send back a blank response
                         else:
-                                #time.sleep(1)  #I don't think we need to have a delay
-                                self.request.sendall(JSON_HEADERS)
-                                L.debug("Sent blank JSON response")
+                                self.send_json("")
 
                 #Requesting the state of just one light
                 elif re.match( r'GET /api/.*lights/(\d+) ', data, re.I):
                         reqHueNo = "1"
                         matchObj = re.match( r'GET /api/.*lights/(\d+) ', data, re.I)
                         if matchObj: reqHueNo = matchObj.group(1)
-                        OneResp = ONELIGHTRESP_TEMPLATE_JSON.format(HUE1ON, HUE1BRI, HUE1XY, HUE1CT, HUE1NAME)
-                        if reqHueNo == "2":
-                                OneResp = ONELIGHTRESP_TEMPLATE_JSON.format(HUE2ON, HUE2BRI, HUE2XY, HUE2CT, HUE2NAME)
-                        elif reqHueNo == "3":
-                                OneResp = ONELIGHTRESP_TEMPLATE_JSON.format(HUE3ON, HUE3BRI, HUE3XY, HUE3CT, HUE3NAME)
-                        self.request.sendall(JSON_HEADERS)
-                        self.request.sendall(OneResp)
-                        L.debug("Sent HTTP Individual Light Response: {}".format(OneResp))
+                        device_num = int(reqHueNo) - 1
+                        device = DEVICES[device_num]
+                        # TODO: Force update of device? dst = device.st()
+                        OneResp = self.get_onelight_json(device)
+                        self.send_json(OneResp)
 
                 #Assuming this is a new device registration or config request
                 elif "GET /api/" in data:
                         if "/config" in data:
-                                L.info("Got request for /config")
-                                self.request.sendall(JSON_HEADERS)
-                                self.request.sendall(APICONFIG_JSON)
-                                L.info("Sent API Config")
+                                L.info("hueUpnp: {} Got request for /config".format(client))
+                                self.send_json(APICONFIG_JSON)
+                                L.info("hueUpnp: {} Sent API Config".format(client))
                         else:
                                 newDev = "newdeveloper"
                                 matchObj = re.match( r'GET /api/(.+) ', data, re.I)
                                 if matchObj: newDev = matchObj.group(1)
-                                L.info("Got request for new dev: {}".format(newDev))
-                                #time.sleep(1)  #I don't think we need to have a delay
-                                self.request.sendall(JSON_HEADERS)
-                                self.request.sendall(NEWDEVELOPER_JSON)
-                                L.info("Sent HTTP New Dev Response")
+                                L.info("hueUpnp: {} Got request for new dev: {}".format(client,newDev))
+                                json_resp = NEWDEVELOPER_JSON = """{"lights":{"""
+                                i = 1
+                                device_json = ()
+                                for device in DEVICES:
+                                        json_resp += """"%d":""" % (i)
+                                        #dst = device.st()
+                                        json_resp += self.get_onelight_json(device)
+                                        if i < len(DEVICES):
+                                                json_resp += ","
+                                        i += 1
+
+                                json_resp += """},"schedules":{"1":{"time":"2012-10-29T12:00:00","description":"","name":"schedule","command":{"body":{"on":true,"xy":null,"bri":null,"transitiontime":null},"address":"/api/newdeveloper/groups/0/action","method":"PUT"}}},"config":{"portalservices":false,"gateway":"%s","mac":"%s","swversion":"01005215","linkbutton":false,"ipaddress":"%s:%s","proxyport":0,"swupdate":{"text":"","notify":false,"updatestate":0,"url":""},"netmask":"255.255.255.0","name":"Philips hue","dhcp":true,"proxyaddress":"","whitelist":{"newdeveloper":{"name":"test user","last use date":"2015-02-04T21:35:18","create date":"2012-10-29T12:00:00"}},"UTC":"2012-10-29T12:05:00"},"groups":{"1":{"name":"Group 1","action":{"on":true,"bri":254,"hue":33536,"sat":144,"xy":[0.346,0.3568],"ct":201,"alert":null,"effect":"none","colormode":"xy","reachable":null},"lights":["1","2"]}},"scenes":{}}\n""" % (GATEWAYIP, MACADDRESS, IP, HTTP_PORT)
+                                self.send_json(json_resp)
+                                L.info("hueUpnp: {} Sent HTTP New Dev Response".format(client))
 
                 #I only saw a POST when registering the username
                 elif "POST /api/" in data:
                         #time.sleep(1)  #I don't think we need to have a delay
-                        self.request.sendall(JSON_HEADERS)
-                        self.request.sendall(NEWDEVELOPERSYNC_JSON)
-                        L.info("Sent HTTP New Dev Sync Response")
+                        self.send_json(NEWDEVELOPERSYNC_JSON)
+                        L.info("hueUpnp: {} Sent HTTP New Dev Sync Response".format(client))
 
                 else:
                         self.request.sendall("HTTP/1.1 404 Not Found")
 
-                L.debug("-------------------------------")
-                L.debug("    ")
+                L.debug("hueUpnp: -------------------------------")
+                L.debug("hueUpnp:     ")
 
-if __name__ == '__main__':
+        def get_onelight_json(self,device):
+                #example template values: "on", "[0.0,0.0]", "Hue Lamp 1", "254", "201"
+                # on, bri, xy, ct, name
+                json_resp = """{"state":{"on":%s,"bri":%s,"hue":4444,"sat":254,"xy":%s,"ct":%s,"alert":"none","effect":"none","colormode":"hs","reachable":true},"type":"Extended color light","name":"%s","modelid":"LCT001","swversion":"65003148","pointsymbol":{}}"""
+                return json_resp % (device.on, device.bri, device.xy, device.ct, device.name)
+
+        def send_json(self,resp):
+                date_str = email.utils.formatdate(timeval=None, localtime=False, usegmt=True)
+                full_resp = (JSON_HEADERS % (len(resp), date_str, resp)).replace("\n", "\r\n")
+                self.request.sendall(full_resp)
+                L.debug("hueUpnp: {} Sent HTTP Put Response:\n{}".format(self.client_address[0],full_resp))
+
+#
+# This is the main object which all other handlers inherit from:
+class hue_upnp_super_handler(object):
+        def __init__(self, name):
+                self.name    = name
+                self.get_all()
+
+
+        # Set default initial values
+        # Can be overridden, or used as a super, or just use the defaults.
+        def get_all(self):
+                self.on  = "true"
+                self.bri = 254
+                self.xy  = [0.0,0.0];
+                self.ct  = 201
+
+        # Super set method, parses incomming data and runs the appropriate method.
+        def set(self,data):
+                ret = False
+                # TODO: If bri is specified, we only call set_bri and ignore on, is that the right thing?
+                # TODO: I think so, because it's up to the bri method to know what to do.
+                if 'bri' in data:
+                        # For some reason, the first time on/off is toggled from harmony it passes on: true, bri: 0
+                        # so we assume it really meant full on...
+                        if 'on' in data and data['on'] and data['bri'] == 0:
+                                ret = self.set_on()
+                        else:
+                                ret = self.set_bri(data['bri'])
+                        if ret:
+                                self.on = "true"
+                                self.bri = data['bri']
+                elif 'on' in data:
+                        if data['on']:
+                                ret = self.set_on()
+                                if ret:
+                                        self.on = "true"
+                        else:
+                                ret = self.set_off()
+                                if ret:
+                                        self.on = "false"
+                else:
+                        L.error("ERROR: Unknown set data: " + data)
+                return ret
+
+        # Default, should always be overridden
+        def set_on(self):
+                L.error("ERROR: Device " + self.name + " does not have an on command?")
+                
+        # Default, should always be overridden
+        def set_off(self):
+                L.error("ERROR: Device " + self.name + " does not have an off command?")
+                
+        # Default, should always be overridden
+        def set_bri(self,value):
+                L.error("ERROR: Device " + self.name + " does not have a bri command?")
+                
+        # Default, should always be overridden
+        def set_ct(self,value):
+                L.error("ERROR: Device " + self.name + " does not have a ct command?")
+                
+        # Default, should always be overridden
+        def set_xy(self,value):
+                L.error("ERROR: Device " + self.name + " does not have a xy command?")
+                
+class hue_upnp_helper_handler(hue_upnp_super_handler):
+        def __init__(self, name):
+                super(hue_upnp_helper_handler,self).__init__(name)
+                self.program = "./hue-upnp-helper.sh"
+
+        def set_on(self):
+                # Use external program to do "stuff" if desired
+                return subprocess.Popen([self.program, self.name, "on", "true"])
+                
+        def set_off(self):
+                # Use external program to do "stuff" if desired
+                return subprocess.Popen([self.program, self.name, "on", "false"])
+                
+        def set_bri(self,value):
+                # Use external program to do "stuff" if desired
+                ret = subprocess.Popen([self.program, self.name, "bri", str(value)])
+                
+        def set_ct(self,value):
+                # Use external program to do "stuff" if desired
+                ret = subprocess.Popen([self.program, self.name, "ct", value])
+                
+        def set_xy(self,value):
+                # Use external program to do "stuff" if desired
+                ret = subprocess.Popen([self.program, self.name, "xy", value])
+                
+class isy_rest_handler(hue_upnp_super_handler):
+        def __init__(self, name, address):
+                self.address = address
+                self.on_cmd  = 'http://' + ISY_IP + '/rest/nodes/%s/cmd/DON' % self.address;
+                self.off_cmd = 'http://' + ISY_IP + '/rest/nodes/%s/cmd/DOF' % self.address;
+                self.st_cmd = 'http://' + ISY_IP + '/rest/nodes/%s/ST' % self.address;
+                self.auth    = HTTPBasicAuth(ISY_USERNAME, ISY_PASSWORD);
+                super(isy_rest_handler,self).__init__(name)
+
+        def get_all(self):
+                # Set all the defaults
+                super(isy_rest_handler,self).get_all()
+                # Query the ISY to get the current values.
+                L.debug('ST: ' + self.st_cmd);
+                # TODO: Parse the values.
+                r = requests.get(self.st_cmd, auth=self.auth)
+                return (r.status_code == 200)
+
+        def set_on(self):
+                return self.do_rest(self.on_cmd)
+                
+        def set_off(self):
+                return self.do_rest(self.off_cmd)
+                
+        def set_bri(self,value):
+                cmd = self.on_cmd + "/" + str(value)
+                return self.do_rest(cmd)
+                
+        def do_rest(self,rest):
+                L.info("ISY REST: " + rest)
+                r = requests.get(rest, auth=self.auth)
+                if r.status_code == 200:
+                        self.on = "true"
+                        return True
+                return False
+    
+def run(devices, logger=False):
+        global L
+        L = logger
+        global DEVICES
+        DEVICES = devices
+        L.info("hueUpnp: Server starting")
+    
         responder = Responder()
         broadcaster = Broadcaster()
         httpd = Httpd()
@@ -440,7 +568,39 @@ if __name__ == '__main__':
                         broadcaster.join(1)
                         httpd.join(1)
         except (KeyboardInterrupt, SystemExit):
-                L.info("Waiting for connections to end before exiting")
-        responder.stop()
-        broadcaster.stop()
-        httpd.stop()
+                L.info("hueUpnp: Waiting for connections to end before exiting")
+                responder.stop()
+                broadcaster.stop()
+                httpd.stop()
+
+
+if __name__ == '__main__':
+
+        debug = False
+        if len(sys.argv) > 1 and sys.argv[1] == '-d':
+                debug = True
+
+        #Setup Logging Output
+        logFormatter = logging.Formatter("%(asctime)s [%(levelname)-5.5s] %(message)s")
+        logger = logging.getLogger()
+        if debug is True:
+                logger.setLevel(logging.DEBUG)
+        else:
+                logger.setLevel(logging.INFO)
+            
+        consoleHandler = logging.StreamHandler(sys.stdout)
+        consoleHandler.setFormatter(logFormatter)
+        logger.addHandler(consoleHandler)
+        L = logger
+        
+        import hueUpnp_config
+        ISY_IP       = hueUpnp_config.isy['ip']
+        ISY_USERNAME = hueUpnp_config.isy['username']
+        ISY_PASSWORD = hueUpnp_config.isy['password']
+        
+        DEVICES = [
+                isy_rest_handler('Floor Lamp','2E 59 94 1'),
+                hue_upnp_helper_handler('Test Outlet'),
+        ]
+        
+        run(DEVICES,logger);
