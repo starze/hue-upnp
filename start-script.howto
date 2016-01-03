@@ -8,7 +8,7 @@
 # To use this, update the HUEUPNPDIR path below to the location that you placed code.
 # Then copy it to your /etc/init.d dir, set permissions, and link to rc dirs 
 # e.g.
-# sudo copy hueUpnp.howto /etc/init.d/hueUpnp
+# sudo cp start-script.howto /etc/init.d/hueUpnp
 # sudo chmod 755 /etc/init.d/hueUpnp
 # sudo update-rc.d hueUpnp defaults    #ubuntu command
 #
