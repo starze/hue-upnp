@@ -11,17 +11,6 @@ from threading import Thread
 import requests
 from requests.auth import HTTPDigestAuth,HTTPBasicAuth
 import json
-import hueUpnp_config
-
-#config
-BCAST_IP = hueUpnp_config.standard['BCAST_IP']
-UPNP_PORT = hueUpnp_config.standard['UPNP_PORT']
-BROADCAST_INTERVAL = hueUpnp_config.standard['BROADCAST_INTERVAL']
-IP = hueUpnp_config.standard['IP']
-HTTP_PORT = hueUpnp_config.standard['HTTP_PORT']
-GATEWAYIP = hueUpnp_config.standard['GATEWAYIP']
-MACADDRESS = hueUpnp_config.standard['MACADDRESS']
-SERIALNO = re.sub(':','',MACADDRESS) # same as the MACADDRESS with colons removed
 
 L = False
 
@@ -36,7 +25,7 @@ NTS: ssdp:alive
 NT: upnp:rootdevice
 USN: uuid:2f402f80-da50-11e1-9b23-{}::upnp:rootdevice
 
-""".format(IP, HTTP_PORT,SERIALNO).replace("\n", "\r\n")
+""".replace("\n", "\r\n")
 
 
 #IP, PORT, ST
@@ -109,12 +98,12 @@ Connection: Keep-Alive
 </iconList>
 </device>
 </root>
-""".format(IP, HTTP_PORT, IP, SERIALNO, SERIALNO).replace("\n", "\n") #was \r\n
+""".replace("\n", "\n") #was \r\n
 
 #20150920-Added in case it is used for discovery
 APICONFIG_JSON = """
 [{"swversion":"01008227","apiversion":"1.2.1","name":"Smartbridge 1","mac":"%s",}]
-""" % (MACADDRESS)
+"""
 
 NEWDEVELOPERSYNC_JSON = """
 [{"success":{"%s":""}}]
@@ -152,8 +141,8 @@ class Broadcaster(Thread):
                 sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 20)
 
                 while True:
-                        sock.sendto(UPNP_BROADCAST, (BCAST_IP, UPNP_PORT))
-                        for x in range(BROADCAST_INTERVAL):
+                        sock.sendto(UPNP_BROADCAST, (CONFIG.standard['BCAST_IP'], CONFIG.standard['UPNP_PORT']))
+                        for x in range(CONFIG.standard['BROADCAST_INTERVAL']):
                                 time.sleep(1)
                                 if self.interrupted:
                                         sock.close()
@@ -172,8 +161,8 @@ class Responder(Thread):
 #found this alternative method of binding in case there are other UPNP services running on port 1900
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                sock.bind(('', UPNP_PORT))
-                mreq = struct.pack("4sl", socket.inet_aton(BCAST_IP), socket.INADDR_ANY)
+                sock.bind(('', CONFIG.standard['UPNP_PORT']))
+                mreq = struct.pack("4sl", socket.inet_aton(CONFIG.standard['BCAST_IP']), socket.INADDR_ANY)
                 sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
                 sock.settimeout(1)
@@ -206,17 +195,32 @@ class Responder(Thread):
 
                                         if "urn:schemas-upnp-org:device:basic:1" in data:
                                                 L.debug("hueUpnp: received urn:schemas-upnp-org:device:basic:1")
-                                                resp = UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"urn:schemas-upnp-org:device:basic:1",SERIALNO)
+                                                resp = UPNP_RESPOND_TEMPLATE.format(
+                                                        CONFIG.standard['IP'],
+                                                        CONFIG.standard['HTTP_PORT'],
+                                                        "urn:schemas-upnp-org:device:basic:1",
+                                                        CONFIG.standard['SERIALNO'])
+                                                
                                                 sock.sendto(resp, addr)
                                                 L.info("hueUpnp: Response sent: "+resp)
                                         elif "upnp:rootdevice" in data:
                                                 L.debug("hueUpnp: received upnp:rootdevice")
-                                                resp = UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"upnp:rootdevice",SERIALNO)
+                                                resp = UPNP_RESPOND_TEMPLATE.format(
+                                                        CONFIG.standard['IP'],
+                                                        CONFIG.standard['HTTP_PORT'],
+                                                        "upnp:rootdevice",
+                                                        CONFIG.standard['SERIALNO']
+                                                )
                                                 sock.sendto(resp, addr)
                                                 L.info("hueUpnp: Response sent: "+resp)
                                         elif "ssdp:all" in data:
                                                 L.debug("hueUpnp: received ssdp:all responding with upnp:rootdevice")
-                                                resp = UPNP_RESPOND_TEMPLATE.format(IP,HTTP_PORT,"upnp:rootdevice",SERIALNO)
+                                                resp = UPNP_RESPOND_TEMPLATE.format(
+                                                        CONFIG.standard['IP'],
+                                                        CONFIG.standard['HTTP_PORT'],
+                                                        "upnp:rootdevice",
+                                                        CONFIG.standard['SERIALNO']
+                                                )
                                                 sock.sendto(resp, addr)
                                                 L.info("hueUpnp: Response sent: "+resp)
                                         else:
@@ -237,7 +241,8 @@ class Responder(Thread):
 class Httpd(Thread):
         def run(self):
                 try:
-                        self.server = SocketServer.ThreadingTCPServer((IP, HTTP_PORT), HttpdRequestHandler)
+                        L.info("hueUpnp: Starting HTTP server for {}:{}".format(CONFIG.standard['IP'],CONFIG.standard['HTTP_PORT']))
+                        self.server = SocketServer.ThreadingTCPServer((CONFIG.standard['IP'], CONFIG.standard['HTTP_PORT']), HttpdRequestHandler)
                         self.server.allow_reuse_address = True
                         self.server.serve_forever()
                 except socket.error as msg:
@@ -291,11 +296,11 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                 elif re.match( r'GET /api/.*lights ', data, re.I):
                         resp = "\n{"
                         i = 1
-                        for device in DEVICES:
+                        for device in CONFIG.devices:
                                 # TODO: Force update of device? dst = device.st()
                                 resp += "\"%d\":" % (i)
                                 resp += self.get_onelight_json(device)
-                                if i < len(DEVICES):
+                                if i < len(CONFIG.devices):
                                         resp += ","
                                 i += 1
                         resp += "}\n"
@@ -349,7 +354,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                 deviceNum = int(reqHueNo) - 1
                                 # TODO: Check that device number is valid.
                                 L.debug("device number:%d" % deviceNum)
-                                dst = DEVICES[deviceNum].set(parsedContent)
+                                dst = CONFIG.devices[deviceNum].set(parsedContent)
                                 # Build the proper response
                                 if dst:
                                         respStatus = "success"
@@ -372,7 +377,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                         matchObj = re.match( r'GET /api/.*lights/(\d+) ', data, re.I)
                         if matchObj: reqHueNo = matchObj.group(1)
                         device_num = int(reqHueNo) - 1
-                        device = DEVICES[device_num]
+                        device = CONFIG.devices[device_num]
                         # TODO: Force update of device? dst = device.st()
                         OneResp = self.get_onelight_json(device)
                         self.send_json(OneResp)
@@ -391,15 +396,15 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                 json_resp = NEWDEVELOPER_JSON = """{"lights":{"""
                                 i = 1
                                 device_json = ()
-                                for device in DEVICES:
+                                for device in CONFIG.devices:
                                         json_resp += """"%d":""" % (i)
                                         #dst = device.st()
                                         json_resp += self.get_onelight_json(device)
-                                        if i < len(DEVICES):
+                                        if i < len(CONFIG.devices):
                                                 json_resp += ","
                                         i += 1
 
-                                json_resp += """},"schedules":{"1":{"time":"2012-10-29T12:00:00","description":"","name":"schedule","command":{"body":{"on":true,"xy":null,"bri":null,"transitiontime":null},"address":"/api/newdeveloper/groups/0/action","method":"PUT"}}},"config":{"portalservices":false,"gateway":"%s","mac":"%s","swversion":"01005215","linkbutton":false,"ipaddress":"%s:%s","proxyport":0,"swupdate":{"text":"","notify":false,"updatestate":0,"url":""},"netmask":"255.255.255.0","name":"Philips hue","dhcp":true,"proxyaddress":"","whitelist":{"newdeveloper":{"name":"test user","last use date":"2015-02-04T21:35:18","create date":"2012-10-29T12:00:00"}},"UTC":"2012-10-29T12:05:00"},"groups":{"1":{"name":"Group 1","action":{"on":true,"bri":254,"hue":33536,"sat":144,"xy":[0.346,0.3568],"ct":201,"alert":null,"effect":"none","colormode":"xy","reachable":null},"lights":["1","2"]}},"scenes":{}}\n""" % (GATEWAYIP, MACADDRESS, IP, HTTP_PORT)
+                                json_resp += """},"schedules":{"1":{"time":"2012-10-29T12:00:00","description":"","name":"schedule","command":{"body":{"on":true,"xy":null,"bri":null,"transitiontime":null},"address":"/api/newdeveloper/groups/0/action","method":"PUT"}}},"config":{"portalservices":false,"gateway":"%s","mac":"%s","swversion":"01005215","linkbutton":false,"ipaddress":"%s:%s","proxyport":0,"swupdate":{"text":"","notify":false,"updatestate":0,"url":""},"netmask":"255.255.255.0","name":"Philips hue","dhcp":true,"proxyaddress":"","whitelist":{"newdeveloper":{"name":"test user","last use date":"2015-02-04T21:35:18","create date":"2012-10-29T12:00:00"}},"UTC":"2012-10-29T12:05:00"},"groups":{"1":{"name":"Group 1","action":{"on":true,"bri":254,"hue":33536,"sat":144,"xy":[0.346,0.3568],"ct":201,"alert":null,"effect":"none","colormode":"xy","reachable":null},"lights":["1","2"]}},"scenes":{}}\n""" % (CONFIG.standard['GATEWAYIP'], CONFIG.standard['MACADDRESS'], CONFIG.standard['IP'], CONFIG.standard['HTTP_PORT'])
                                 self.send_json(json_resp)
                                 L.info("hueUpnp: {} Sent HTTP New Dev Response".format(client))
 
@@ -430,16 +435,15 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
 #
 # This is the main object which all other handlers inherit from:
 class hue_upnp_super_handler(object):
-        def __init__(self, name):
+        def __init__(self, name, on="false", bri="0"):
                 self.name    = name
+                self.on      = on
+                self.bri     = bri
                 self.get_all()
-
 
         # Set default initial values
         # Can be overridden, or used as a super, or just use the defaults.
         def get_all(self):
-                self.on  = hueUpnp_config.standard['DEFAULT_ON_STATE']
-                self.bri = hueUpnp_config.standard['DEFAULT_BRI_STATE']
                 self.xy  = [0.0,0.0];
                 self.ct  = 201
 
@@ -496,7 +500,11 @@ class hue_upnp_super_handler(object):
 
 class hue_upnp_helper_handler(hue_upnp_super_handler):
         def __init__(self, name, prog):
-                super(hue_upnp_helper_handler,self).__init__(name)
+                super(hue_upnp_helper_handler,self).__init__(
+                        name,
+                        on=hueUpnp_config.standard['DEFAULT_ON_STATE'],
+                        bri=hueUpnp_config.standard['DEFAULT_BRI_STATE']
+                )
                 self.program = prog
 
         def set_on(self):
@@ -546,7 +554,11 @@ class isy_rest_handler(hue_upnp_super_handler):
                 self.off_cmd = 'http://' + ISY_IP + '/rest/nodes/%s/cmd/DOF' % self.address;
                 self.st_cmd = 'http://' + ISY_IP + '/rest/nodes/%s/ST' % self.address;
                 self.auth    = HTTPBasicAuth(ISY_USERNAME, ISY_PASSWORD);
-                super(isy_rest_handler,self).__init__(name)
+                super(isy_rest_handler,self).__init__(
+                        name,
+                        on=hueUpnp_config.standard['DEFAULT_ON_STATE'],
+                        bri=hueUpnp_config.standard['DEFAULT_BRI_STATE']
+                )
 
         def get_all(self):
                 # Set all the defaults
@@ -575,11 +587,15 @@ class isy_rest_handler(hue_upnp_super_handler):
                         return True
                 return False
 
-def run(devices, logger=False):
-        global L
-        L = logger
-        global DEVICES
-        DEVICES = devices
+def run(config):
+        global L,CONFIG,UPNP_BROADCAST,DESCRIPTION_XML,APICONFIG_JSON
+        L      = config.logger
+        CONFIG = config
+        CONFIG.standard['SERIALNO'] = re.sub(':','',CONFIG.standard['MACADDRESS']) # same as the MACADDRESS with colons removed
+        # Put our info in the responses
+        UPNP_BROADCAST  = UPNP_BROADCAST.format(CONFIG.standard['IP'], CONFIG.standard['HTTP_PORT'],CONFIG.standard['SERIALNO'])
+        DESCRIPTION_XML = DESCRIPTION_XML.format(CONFIG.standard['IP'], CONFIG.standard['HTTP_PORT'], CONFIG.standard['IP'], CONFIG.standard['SERIALNO'], CONFIG.standard['SERIALNO'])
+        APICONFIG_JSON  = APICONFIG_JSON % (CONFIG.standard['MACADDRESS'])
         L.info("hueUpnp: Server starting")
 
         responder = Responder()
@@ -601,6 +617,8 @@ def run(devices, logger=False):
 
 
 if __name__ == '__main__':
+
+        import hueUpnp_config
 
         debug = hueUpnp_config.standard['DEBUG']
         #Let commandline arg override config
@@ -624,16 +642,18 @@ if __name__ == '__main__':
         ISY_USERNAME = hueUpnp_config.isy['username']
         ISY_PASSWORD = hueUpnp_config.isy['password']
 
-        DEVICES = []
+        # Rebuild devices we understand as a list
+        devices = []
         for key in hueUpnp_config.devices:
             L.debug('Adding device: ' + key + ' - type: ' + (hueUpnp_config.devices[key])[0])
             if (hueUpnp_config.devices[key])[0] == 'script_handler':
-               DEVICES.append(hue_upnp_helper_handler(key, (hueUpnp_config.devices[key])[1]))
+               devices.append(hue_upnp_helper_handler(key, (hueUpnp_config.devices[key])[1]))
             elif (hueUpnp_config.devices[key])[0] == 'isy_rest_handler':
-               DEVICES.append(isy_rest_handler(key, (hueUpnp_config.devices[key])[1]))
+               devices.append(isy_rest_handler(key, (hueUpnp_config.devices[key])[1]))
             else:
                 L.error("hueUpnp: Unknown device type specified in the config")
                 thread.interrupt_main()  #exiting program
+        hueUpnp_config.devices = devices
+        hueUpnp_config.logger  = logger
 
-
-        run(DEVICES,logger);
+        run(hueUpnp_config);
