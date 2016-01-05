@@ -457,10 +457,10 @@ class hue_upnp_super_handler(object):
                         # For some reason, the first time on/off is toggled from harmony it passes on: true, bri: 0
                         # so we assume it really meant full on...
                         # falk0069: for me it does [on: true, bri: 254]. Adding both 'set_on' and 'set_bri' to else.
+                        # jimboca: Moved that extra set_on to hue_upnp_helper_handler so it doesn't get passed to other handlers
                         if 'on' in data and data['on'] and data['bri'] == 0:
                                 ret = self.set_on()
                         else:
-                                ret = self.set_on()
                                 ret = self.set_bri(data['bri'])
                         if ret:
                                 self.on = "true"
@@ -524,13 +524,16 @@ class hue_upnp_helper_handler(hue_upnp_super_handler):
                 return not p.returncode
 
         def set_bri(self,value):
+                ret = self.set_on()
+                if not ret:
+                        return ret
                 # Use external program to do "stuff" if desired
                 L.debug("Running: {} {} bri {}".format(self.program, self.name, str(value)))
                 #Note processes return 0 on success and Popen does not wait
                 p = subprocess.Popen([self.program, self.name, "bri", str(value)])
                 p.communicate() #wait to complete
                 return not p.returncode
-
+                
         def set_ct(self,value):
                 # Use external program to do "stuff" if desired
                 L.debug("Running: {} {} ct {}".format(self.program, self.name, value))
