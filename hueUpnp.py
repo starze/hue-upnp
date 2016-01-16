@@ -164,7 +164,9 @@ class Responder(Thread):
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 #Issue9: Force responses over configured interface
-                sock.bind((CONFIG.standard['IP'], CONFIG.standard['UPNP_PORT']))
+                #backing out--appears no response are working now
+                #sock.bind((CONFIG.standard['IP'], CONFIG.standard['UPNP_PORT']))
+                sock.bind(('', CONFIG.standard['UPNP_PORT']))
                 mreq = struct.pack("4sl", socket.inet_aton(CONFIG.standard['BCAST_IP']), socket.INADDR_ANY)
                 sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
@@ -245,6 +247,8 @@ class Httpd(Thread):
         def run(self):
                 try:
                         L.info("hueUpnp: Starting HTTP server for {}:{}".format(CONFIG.standard['IP'],CONFIG.standard['HTTP_PORT']))
+                        #Issue 11: testing reuse when TIME_WAITs exist
+                        SocketServer.ThreadingTCPServer.allow_reuse_address = True
                         self.server = SocketServer.ThreadingTCPServer((CONFIG.standard['IP'], CONFIG.standard['HTTP_PORT']), HttpdRequestHandler)
                         self.server.allow_reuse_address = True
                         self.server.serve_forever()
