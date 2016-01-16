@@ -163,7 +163,7 @@ class Responder(Thread):
 #found this alternative method of binding in case there are other UPNP services running on port 1900
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                sock.bind(('', CONFIG.standard['UPNP_PORT']))
+                sock.bind((CONFIG.standard['IP'], CONFIG.standard['UPNP_PORT']))
                 mreq = struct.pack("4sl", socket.inet_aton(CONFIG.standard['BCAST_IP']), socket.INADDR_ANY)
                 sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
 
