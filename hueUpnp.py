@@ -163,12 +163,14 @@ class Responder(Thread):
 #found this alternative method of binding in case there are other UPNP services running on port 1900
                 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                #Issue9: Force responses over configured interface
-                #backing out--appears no response are working now
-                #sock.bind((CONFIG.standard['IP'], CONFIG.standard['UPNP_PORT']))
                 sock.bind(('', CONFIG.standard['UPNP_PORT']))
                 mreq = struct.pack("4sl", socket.inet_aton(CONFIG.standard['BCAST_IP']), socket.INADDR_ANY)
                 sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+
+                #Issue 9: create separate response socket bound to assigned interface
+                sockresp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+                sockresp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sockresp.bind((CONFIG.standard['IP'], CONFIG.standard['UPNP_PORT']))
 
                 sock.settimeout(1)
                 while True:
@@ -205,8 +207,8 @@ class Responder(Thread):
                                                         CONFIG.standard['HTTP_PORT'],
                                                         "urn:schemas-upnp-org:device:basic:1",
                                                         CONFIG.standard['SERIALNO'])
-                                                
-                                                sock.sendto(resp, addr)
+
+                                                sockresp.sendto(resp, addr)
                                                 L.info("hueUpnp: Response sent: "+resp)
                                         elif "upnp:rootdevice" in data:
                                                 L.debug("hueUpnp: received upnp:rootdevice")
@@ -216,7 +218,7 @@ class Responder(Thread):
                                                         "upnp:rootdevice",
                                                         CONFIG.standard['SERIALNO']
                                                 )
-                                                sock.sendto(resp, addr)
+                                                sockresp.sendto(resp, addr)
                                                 L.info("hueUpnp: Response sent: "+resp)
                                         elif "ssdp:all" in data:
                                                 L.debug("hueUpnp: received ssdp:all responding with upnp:rootdevice")
@@ -226,7 +228,7 @@ class Responder(Thread):
                                                         "upnp:rootdevice",
                                                         CONFIG.standard['SERIALNO']
                                                 )
-                                                sock.sendto(resp, addr)
+                                                sockresp.sendto(resp, addr)
                                                 L.info("hueUpnp: Response sent: "+resp)
                                         else:
                                                 L.debug("hueUpnp: ignoring")
@@ -540,7 +542,7 @@ class hue_upnp_helper_handler(hue_upnp_super_handler):
                 p = subprocess.Popen([self.program, self.name, "bri", str(value)])
                 p.communicate() #wait to complete
                 return not p.returncode
-                
+
         def set_ct(self,value):
                 # Use external program to do "stuff" if desired
                 L.debug("Running: {} {} ct {}".format(self.program, self.name, value))
