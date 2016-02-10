@@ -633,9 +633,18 @@ if __name__ == '__main__':
         import hueUpnp_config
 
         debug = hueUpnp_config.standard['DEBUG']
-        #Let commandline arg override config
-        if len(sys.argv) > 1 and sys.argv[1] == '-d':
-                debug = True
+        for i,arg in enumerate(sys.argv):
+                #Let commandline arg override config
+                if arg == '-d':
+                        debug = True
+                #Set logging file
+                elif arg == '-l':
+                        if len(sys.argv) > i+1:
+                                sys.stdout = open(sys.argv[i+1], 'w')
+                                sys.stderr = open(sys.argv[i+1], 'w')
+                        else:
+                                print "Please provide path the log file after -l"
+                                thread.interrupt_main()  #exiting program
 
         #Setup Logging Output
         logFormatter = logging.Formatter("%(asctime)s [%(levelname)-5.5s] %(message)s")
