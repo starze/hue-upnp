@@ -16,6 +16,8 @@
 # sudo insserv hueUpnp    #ubuntu command
 # sudo /usr/lib/insserv/insserv hueUpnp  #run this instead if command not found
 #
+# Update 2016/02: Created a simple systemd script called hueUpnp.service if you prefer
+#
 # To start manually:
 # sudo /etc/init.d/hueUpnp start
 # or
