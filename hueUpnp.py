@@ -354,6 +354,9 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                                 elif 'xy' in parsedContent:
                                         reqCmd = 'xy'
                                         reqValue = parsedContent['xy']
+                                elif 'ct' in parsedContent:
+                                        reqCmd = 'ct'
+                                        reqValue = parsedContent['ct']
                                 else:
                                         # TODO: throw an exception, or just print error?
                                         return
@@ -459,15 +462,17 @@ class hue_upnp_super_handler(object):
         # Super set method, parses incomming data and runs the appropriate method.
         def set(self,data):
                 L.debug("In set method. Data={}".format(data))
-                ret = False
+                ret = True
                 # TODO: If bri is specified, we only call set_bri and ignore on, is that the right thing?
                 # TODO: I think so, because it's up to the bri method to know what to do.
                 if 'bri' in data:
+                        L.debug("bri received: {}".format(data['bri']))
                         # For some reason, the first time on/off is toggled from harmony it passes on: true, bri: 0
                         # so we assume it really meant full on...
                         # falk0069: for me it does [on: true, bri: 254]. Adding both 'set_on' and 'set_bri' to else.
                         # jimboca: Moved that extra set_on to hue_upnp_helper_handler so it doesn't get passed to other handlers
                         if 'on' in data and data['on'] and data['bri'] == 0:
+                                L.debug(" also on received: {}".format(data['on']))
                                 ret = self.set_on()
                         else:
                                 ret = self.set_bri(data['bri'])
@@ -475,6 +480,7 @@ class hue_upnp_super_handler(object):
                                 self.on = "true"
                                 self.bri = data['bri']
                 elif 'on' in data:
+                        L.debug("on received: {}".format(data['on']))
                         if data['on']:
                                 ret = self.set_on()
                                 if ret:
@@ -483,8 +489,25 @@ class hue_upnp_super_handler(object):
                                 ret = self.set_off()
                                 if ret:
                                         self.on = "false"
+                elif 'xy' in data:
+                        L.debug("xy received with no bri/on: {}".format(data['xy']))
+                elif 'ct' in data:
+                        L.debug("ct received with no bri/on: {}".format(data['ct']))
                 else:
                         L.error("ERROR: Unknown set data: " + data)
+                        ret = False
+
+                # alway do xy or ct assuming 'ret' is currently successful (don't overwrite 'ret')
+                if ret and 'xy' in data:
+                        L.debug("xy received: {}".format(data['xy']))
+                        #python does not like the square brackets when passing to exec(), so removing them
+                        ret2 = self.set_xy(str(data['xy']).translate(None, "[]"))
+                        self.xy = data['xy']
+                if ret and 'ct' in data:
+                        L.debug("ct received: {}".format(data['ct']))
+                        ret2 = self.set_ct(data['ct'])
+                        self.ct = data['ct']
+
                 return ret
 
         # Default, should always be overridden
