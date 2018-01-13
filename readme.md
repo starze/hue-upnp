@@ -1,8 +1,14 @@
 # Description
-This is a simple customizable Philip hue emulator that works with a Harmony remote (and now the Amazon Echo -thanks to jimboca). The main purpose is to allow the Harmony/Echo to run *anything* and not just hue light bulbs.
+This is a simple customizable Philips hue emulator that works with a Harmony remote (and now the Amazon Echo -thanks to jimboca). The main purpose is to allow the Harmony/Echo to run *anything* and not just hue light bulbs.
 
 # Why
 I don't own a Philips hue but I wanted an emulator so I could test it against my Harmony remote which supports them.  I found a number of emulators but none of them worked with the Harmony remote.  Sagen's python code was easiest to modify and do what I needed.  I've never coded in python before so this was a good experience.
+
+# How to use it for wake-on-lan
+* Adjust IP-Address in `hueUpnp_config.py`
+* Adjust MAC-Address in `hue-upnp-helper.sh`
+* Run it with `python hueUpnp.py`
+
 
 # Some pitfalls to mention:
 1. The UDP response needs to be bound to port 1900 (like the request) and sent to the same port that the client used (for Harmony)
