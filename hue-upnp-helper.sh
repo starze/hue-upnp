@@ -31,7 +31,7 @@ if [ "$1" == "$DEVICE1" ]; then
     elif [ "$3" == "false" ]; then
       echo $DEVICE1 on false
       if [[ -n $WOLUSER && -n $WOLHOST ]]; then
-        ssh ${WOLUSER}@${WOLHOST} shutdown -h now & 
+        ssh -o StrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null ${WOLUSER}@${WOLHOST} shutdown -h now & 
       else
         echo ERROR: Set \$WOLUSER and \$WOLHOST to shutdown your device via ssh.
       fi
