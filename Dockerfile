@@ -1,4 +1,4 @@
-FROM python:2
+FROM python:3
 MAINTAINER Daniel Starzmann <daniel@starze.de>
 
 RUN apt-get update \

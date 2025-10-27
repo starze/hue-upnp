@@ -6,7 +6,7 @@
 #   sudo apt-get install python-pip
 #   sudo pip install requests
 
-import socket, struct, email.utils, time, SocketServer, re, subprocess, sys, logging, logging.handlers, thread
+import socket, struct, email.utils, time, socketserver, re, subprocess, sys, logging, logging.handlers, _thread
 from threading import Thread
 import requests
 from requests.auth import HTTPDigestAuth,HTTPBasicAuth
@@ -143,7 +143,7 @@ class Broadcaster(Thread):
                 sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 20)
 
                 while True:
-                        sock.sendto(UPNP_BROADCAST, (CONFIG.standard['BCAST_IP'], CONFIG.standard['UPNP_PORT']))
+                        sock.sendto(UPNP_BROADCAST.encode('utf-8'), (CONFIG.standard['BCAST_IP'], CONFIG.standard['UPNP_PORT']))
                         for x in range(CONFIG.standard['BROADCAST_INTERVAL']):
                                 time.sleep(1)
                                 if self.interrupted:
@@ -176,6 +176,7 @@ class Responder(Thread):
                 while True:
                         try:
                                 data, addr = sock.recvfrom(1024)
+                                data = data.decode('utf-8', errors='ignore')
                         except socket.error:
                                 if self.interrupted:
                                         sock.close()
@@ -208,7 +209,7 @@ class Responder(Thread):
                                                         "urn:schemas-upnp-org:device:basic:1",
                                                         CONFIG.standard['SERIALNO'])
 
-                                                sockresp.sendto(resp, addr)
+                                                sockresp.sendto(resp.encode('utf-8'), addr)
                                                 L.info("hueUpnp: Response sent: "+resp)
                                         elif "upnp:rootdevice" in data:
                                                 L.debug("hueUpnp: received upnp:rootdevice")
@@ -218,7 +219,7 @@ class Responder(Thread):
                                                         "upnp:rootdevice",
                                                         CONFIG.standard['SERIALNO']
                                                 )
-                                                sockresp.sendto(resp, addr)
+                                                sockresp.sendto(resp.encode('utf-8'), addr)
                                                 L.info("hueUpnp: Response sent: "+resp)
                                         elif "ssdp:all" in data:
                                                 L.debug("hueUpnp: received ssdp:all responding with upnp:rootdevice")
@@ -228,7 +229,7 @@ class Responder(Thread):
                                                         "upnp:rootdevice",
                                                         CONFIG.standard['SERIALNO']
                                                 )
-                                                sockresp.sendto(resp, addr)
+                                                sockresp.sendto(resp.encode('utf-8'), addr)
                                                 L.info("hueUpnp: Response sent: "+resp)
                                         else:
                                                 L.debug("hueUpnp: ignoring")
@@ -241,32 +242,32 @@ class Responder(Thread):
 #don't want to make a new socket--need to reuse same port
 #Switch def respond(self, addr):
 #               outSock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-#               outSock.sendto(UPNP_RESPOND, addr)
+#               outSock.sendto(UPNP_RESPOND.encode('utf-8'), addr)
 #               outSock.close()
-#               print "Response sent"
+#               print("Response sent")
 
 class Httpd(Thread):
         def run(self):
                 try:
                         L.info("hueUpnp: Starting HTTP server for {}:{}".format(CONFIG.standard['IP'],CONFIG.standard['HTTP_PORT']))
                         #Issue 11: testing reuse when TIME_WAITs exist
-                        SocketServer.ThreadingTCPServer.allow_reuse_address = True
-                        self.server = SocketServer.ThreadingTCPServer((CONFIG.standard['IP'], CONFIG.standard['HTTP_PORT']), HttpdRequestHandler)
+                        socketserver.ThreadingTCPServer.allow_reuse_address = True
+                        self.server = socketserver.ThreadingTCPServer((CONFIG.standard['IP'], CONFIG.standard['HTTP_PORT']), HttpdRequestHandler)
                         self.server.allow_reuse_address = True
                         self.server.serve_forever()
                 except socket.error as msg:
                         L.info("hueUpnp: Http Socket Error: {}".format(msg))
-                        thread.interrupt_main()  #exiting program
+                        _thread.interrupt_main()  #exiting program
 
         def stop(self):
                 self.server.shutdown()
 
-class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
+class HttpdRequestHandler(socketserver.BaseRequestHandler ):
         def handle(self):
                 global json
                 client = self.client_address[0]
                 L.info("hueUpnp: {}: reading http request".format(client))
-                data = self.request.recv(1024)
+                data = self.request.recv(1024).decode('utf-8', errors='ignore')
 
                 #all data isnt always sent right away--try a couple more times
                 #2015-08: Logitech change the data flow slightly.  We seem to need to
@@ -276,9 +277,9 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                 #2015-10: Header size is now computed to determine exactly how much
                 # data still needs to be pulled
                 if "\r\n\r\n" not in data:
-                        data += self.request.recv(1024) #try one more time
+                        data += self.request.recv(1024).decode('utf-8', errors='ignore') #try one more time
                 if "\r\n\r\n" not in data:
-                        data += self.request.recv(1024) #try one more time then give up
+                        data += self.request.recv(1024).decode('utf-8', errors='ignore') #try one more time then give up
                 searchObj = re.search( r'content-length: (\d+)', data, re.I)
                 if searchObj and int(searchObj.group(1)) > 0:
                         contentLength = int(searchObj.group(1))
@@ -286,19 +287,19 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                         L.debug("hueUpnp: Header-Length={} Content-Length={}".format(headerLength,contentLength))
                         #got the header--now grab the remaining content if any
                         if len(data) < headerLength + contentLength:
-                                data += self.request.recv(headerLength + contentLength - len(data))
+                                data += self.request.recv(headerLength + contentLength - len(data)).decode('utf-8', errors='ignore')
 
                 L.debug("hueUpnp: {}: HTTP Request: {}".format(client,data.strip()))
 
                 if "description.xml" in data:
-                        self.request.sendall(DESCRIPTION_XML)
+                        self.request.sendall(DESCRIPTION_XML.encode('utf-8'))
                         L.info("hueUpnp: {} Sent HTTP description.xml Response".format(client))
 
                 elif "hue_logo_0.png" in data:
-                        self.request.sendall(ICON_HEADERS)
+                        self.request.sendall(ICON_HEADERS.encode('utf-8'))
                         self.request.sendall(ICON_SMALL.decode('base64'))
                 elif "hue_logo_3.png" in data:
-                        self.request.sendall(ICON_HEADERS)
+                        self.request.sendall(ICON_HEADERS.encode('utf-8'))
                         self.request.sendall(ICON_BIG.decode('base64'))
 
                 #Request for all lights
@@ -427,7 +428,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
                         L.info("hueUpnp: {} Sent HTTP New Dev Sync Response".format(client))
 
                 else:
-                        self.request.sendall("HTTP/1.1 404 Not Found")
+                        self.request.sendall("HTTP/1.1 404 Not Found".encode('utf-8'))
 
                 L.debug("hueUpnp: -------------------------------")
                 L.debug("hueUpnp:     ")
@@ -441,7 +442,7 @@ class HttpdRequestHandler(SocketServer.BaseRequestHandler ):
         def send_json(self,resp):
                 date_str = email.utils.formatdate(timeval=None, localtime=False, usegmt=True)
                 full_resp = (JSON_HEADERS % (len(resp), date_str, resp)).replace("\n", "\r\n")
-                self.request.sendall(full_resp)
+                self.request.sendall(full_resp.encode('utf-8'))
                 L.debug("hueUpnp: {} Sent HTTP Put Response:\n{}".format(self.client_address[0],full_resp))
 
 #
@@ -666,8 +667,8 @@ if __name__ == '__main__':
                                 sys.stdout = open(sys.argv[i+1], 'w')
                                 sys.stderr = open(sys.argv[i+1], 'w')
                         else:
-                                print "Please provide path the log file after -l"
-                                thread.interrupt_main()  #exiting program
+                                print("Please provide path the log file after -l")
+                                _thread.interrupt_main()  #exiting program
 
         #Setup Logging Output
         logFormatter = logging.Formatter("%(asctime)s [%(levelname)-5.5s] %(message)s")
